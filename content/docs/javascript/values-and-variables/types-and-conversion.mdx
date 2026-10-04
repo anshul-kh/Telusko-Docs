@@ -1,0 +1,76 @@
+---
+title: Types and Conversion
+description: Primitive values, objects, equality, truthiness, and explicit parsing.
+---
+
+JavaScript has seven primitive value types: string, number, bigint, boolean, symbol, undefined, and null. Objects are the other major category; arrays and functions are objects too. Variables do not declare a fixed type.
+
+```js
+console.log(typeof "hello"); // string
+console.log(typeof 42); // number
+console.log(typeof 42n); // bigint
+console.log(typeof undefined); // undefined
+console.log(typeof null); // object (a historical quirk)
+console.log(Array.isArray([])); // true
+```
+
+`number` is a floating-point type. It includes `NaN` and infinities. Decimal fractions can be imprecise: `0.1 + 0.2 !== 0.3`. Use `Number.isFinite(value)` before calculations that require a real finite number, and do not use ordinary floating-point arithmetic for exact money calculations.
+
+Primitives are compared by value. Objects, including arrays, are compared by identity: two separate `{}` values are not equal even if both are empty. A `string` is immutable, so methods such as `trim()` return a new string. An array is mutable, so `push()` changes the existing array. These distinctions explain many later surprises with functions and copying.
+
+## Convert deliberately
+
+Input from forms and command-line arguments arrives as strings. Convert and validate it:
+
+```js
+const raw = "12";
+const count = Number(raw);
+if (!Number.isInteger(count) || count < 0) {
+  throw new Error("Count must be a non-negative integer");
+}
+console.log(count + 1); // 13, not "121"
+```
+
+`Number("")` becomes `0`, so check empty input separately when it should be invalid. `Number("abc")` becomes `NaN`. `String(42)` makes `"42"`; `Boolean(0)` is `false`.
+
+Here is a common input bug from a form or CLI:
+
+```js
+const entered = "2";
+console.log(entered + 3); // "23": one operand is text
+console.log(Number(entered) + 3); // 5
+```
+
+## Primitive and object values
+
+The primitive types are `string`, `number`, `bigint`, `boolean`, `symbol`, `undefined`, and `null`. A primitive value cannot be changed in place. A string method such as `toUpperCase()` returns another string. Objects include plain objects, arrays, dates, maps, sets, and functions; they can hold properties and are compared by identity.
+
+```js
+let word = "cat";
+word.toUpperCase();
+console.log(word); // "cat": the returned string was not assigned
+
+const items = ["cat"];
+items.push("dog");
+console.log(items); // ["cat", "dog"]: the array was mutated
+```
+
+`typeof null` reports `"object"` for historical compatibility; use `value === null` to test specifically for null. `typeof` also reports `"function"` for callable functions even though functions are objects in the language model. Use `Array.isArray(value)` to distinguish arrays from other objects.
+
+## Conversion at boundaries
+
+JavaScript performs implicit coercion in some operators. The `+` operator concatenates if a string participates, whereas subtraction and multiplication generally convert strings to numbers. Do not use this difference as a parsing strategy. Convert once when data enters your program, validate the result, then keep one expected type internally.
+
+Truthiness is useful for optional values, but it is not the same as checking whether input exists. `0`, `""`, `false`, `null`, `undefined`, and `NaN` are falsy; empty arrays and objects are truthy. If zero or an empty string is valid, use a specific check such as `value !== undefined` instead of `if (value)`.
+
+**Checkpoint:** Explain the different results of `"5" + 2`, `"5" - 2`, `Boolean([])`, and `typeof null`. Rewrite a conditional that should accept zero but reject a missing value.
+
+The `+` operator can mean addition or string concatenation. Other arithmetic operators often coerce text to a number, but relying on that makes code hard to reason about. Convert once at the boundary, validate, and keep the internal value numeric.
+
+Use strict equality (`===` and `!==`) by default. Loose equality converts types first: `0 == "0"` is true, while `0 === "0"` is false. In conditions, `false`, `0`, `""`, `null`, `undefined`, and `NaN` are falsy. Empty arrays and objects are truthy. `null` usually means an intentional absence; `undefined` often means a value was never supplied.
+
+**Practice:** Predict `Boolean([])`, `Number("7") + 1`, and `"7" + 1`, then verify in a console.
+
+**Check:** The results are `true`, `8`, and `"71"`. An empty array is an object, and all objects are truthy. The final expression concatenates because its first operand is a string.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

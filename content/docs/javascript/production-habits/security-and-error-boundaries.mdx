@@ -1,0 +1,50 @@
+---
+title: Security and Error Boundaries
+description: Validate at boundaries and avoid common JavaScript security mistakes.
+---
+
+Security starts where data crosses a boundary: browser input, a network response, a command-line argument, or a file. JavaScript's type flexibility does not validate these values for you. Parse them, check their shape and allowed range, and reject values you cannot safely handle.
+
+```js
+function parseTask(input) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new TypeError("Expected a task object");
+  }
+  if (typeof input.title !== "string") {
+    throw new TypeError("title must be a string");
+  }
+  const title = input.title.trim();
+  if (title.length < 1 || title.length > 100) {
+    throw new TypeError("title must contain 1-100 characters");
+  }
+  return { title, done: input.done === true };
+}
+```
+
+This function returns only fields the application understands. It does not blindly copy unknown properties into internal state. For public APIs, decide whether extra properties are ignored or rejected, document that choice, and use the same rule in tests.
+
+## Authentication and authorization
+
+Authentication identifies a caller; authorization decides what that caller may do. Validate identity on the server and check permission for every protected operation, including reads and updates that accept an object ID. A hidden button or client-side route guard is only interface behavior and cannot protect server data.
+
+## Failures and error boundaries
+
+Validate external data at the boundary: HTTP requests, environment variables, files, and messages from workers. Return a clear client error for expected invalid input, but log unexpected failures with a request identifier and enough context to investigate. Never include passwords, tokens, or private data in logs or client error responses.
+
+Use errors to represent failure, not ordinary branching. Preserve causes when adding context, and avoid catching an error unless the current layer can recover or provide meaningful information. In asynchronous code, make sure rejected promises are awaited or returned so their failures reach the intended handler.
+
+## Common boundaries
+
+- **HTML output:** Insert untrusted strings with `textContent`. Avoid raw `innerHTML` and `eval()`.
+- **Secrets:** Keep API keys and credentials on the server, in environment variables or a secret manager. Browser bundles and source maps are visible to users.
+- **File paths:** Do not join an untrusted relative path to a sensitive directory without constraining it; `..` can traverse upward.
+- **HTTP requests:** Limit body size, set timeouts, validate content type and payload, and return controlled errors instead of stack traces.
+- **Dependencies:** Review package changes, pin a lockfile, and apply security updates after testing.
+
+Use `try/catch` at a boundary where you can turn a failure into a useful response or perform cleanup. Do not catch everything in a low-level function and pretend success. Unexpected failures should be logged on the server with context, without leaking credentials or personal data. In a browser, show a clear user-facing error while keeping detailed diagnostics in development tools.
+
+Authentication answers *who* a caller is; authorization answers *what* that caller may do. Neither CORS nor a hidden UI button provides authorization. Enforce it on the server for every protected action.
+
+**Try it:** Call `parseTask()` with `null`, an array, an empty title, and a valid object with an extra `admin` field. Explain the returned result in each case.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

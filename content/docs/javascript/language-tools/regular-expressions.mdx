@@ -1,0 +1,55 @@
+---
+title: Regular Expressions
+description: Match and replace text without confusing validation with parsing.
+---
+
+A regular expression describes a text pattern. Use it for constrained matching, such as a simple identifier or log line. Do not assume a short pattern can fully validate an email address, URL, or programming language.
+
+```js
+const code = "JS-204";
+const match = /^([A-Z]{2})-(\d{3})$/.exec(code);
+console.log(match?.[1], match?.[2]); // JS 204
+```
+
+`^` and `$` anchor the whole string, `[A-Z]` matches one capital letter, `{2}` repeats twice, `\d` matches a digit, and parentheses capture groups. The regular expression literal is delimited by `/.../`. `exec()` returns a match array or `null`, so optional chaining avoids an error when there is no match.
+
+Flags change behavior: `i` ignores case, `g` finds repeated matches, `m` changes line-anchor behavior, and `u` enables Unicode mode, which changes how the pattern interprets Unicode code points and certain escapes. With a global expression, use `matchAll()` when you want every match and its groups:
+
+```js
+const input = "id=12 id=34";
+const ids = [...input.matchAll(/id=(\d+)/g)].map((match) => Number(match[1]));
+console.log(ids); // [12, 34]
+```
+
+`replace()` or `replaceAll()` can use a string or pattern. If a pattern comes from user input and you mean literal text, escape its regex metacharacters or use `replaceAll()` with a string. Complex nested patterns on untrusted, very long input can also become slow; limit input size and test worst cases.
+
+## Read a pattern in pieces
+
+Regular expressions are patterns for finding or validating text. Character classes such as `\d` match a digit and `[A-Z]` matches one uppercase ASCII letter. Quantifiers such as `*`, `+`, `?`, and `{2,4}` specify repetitions. Parentheses group parts and can capture matched text; `(?:...)` groups without capturing. Anchors such as `^` and `$` constrain a match to the start or end of input.
+
+Flags change matching behavior: `i` ignores case, `m` changes line-anchor behavior, and `s` lets `.` match line terminators. The `g` and `y` flags affect repeated matching. Global and sticky regular expressions are stateful because methods can update `lastIndex`; reset or recreate them when reusing a pattern in a loop.
+
+## Match, replace, and escape
+
+`test()` answers whether a match exists. `match()` and `matchAll()` return match data; `replace()` creates a changed string and leaves the original untouched. A replacement callback is useful when output depends on captures. If user input is meant to be literal text inside a pattern, escape regex metacharacters or use string methods instead of interpolating that input directly.
+
+Regular expressions are good for local text shapes, not for parsing nested languages such as full HTML. Large ambiguous patterns can also take excessive time on crafted input. Keep patterns small, bound input length, and prefer a parser for nested syntax.
+
+## Separate matching from meaning
+
+The pattern `/^([A-Z]{2})-(\d{3})$/` says *two capital letters, a hyphen, and three digits*. It does not know what those letters or digits mean. The groups let your program inspect them after the shape matches. For a date, a regex can capture year, month, and day, but your code still needs calendar rules such as month lengths and leap years.
+
+```js
+const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec("2025-19-40");
+console.log(parts?.slice(1)); // ["2025", "19", "40"]
+```
+
+This match succeeds despite the impossible date. Treat a regex as one validation layer, not an oracle. For a URL, the built-in `URL` parser is usually more reliable than a homemade expression.
+
+Patterns can be difficult to read. Write a short comment describing an unusually complex pattern, add tests for both matching and nonmatching inputs, and avoid nested repetition on untrusted long strings where catastrophic backtracking is possible. A global regex with `.test()` or `.exec()` has mutable `lastIndex` state; repeated calls on the same regex can alternate results unexpectedly. `matchAll()` is easier when you want all matches.
+
+**Practice:** Match a date in `YYYY-MM-DD` *shape* and explain why this alone does not prove the date exists (for example, month 19).
+
+**Check:** `/^\d{4}-\d{2}-\d{2}$/` matches the shape. It also accepts `2025-19-40`, which proves that matching syntax and validating a calendar date are separate jobs.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

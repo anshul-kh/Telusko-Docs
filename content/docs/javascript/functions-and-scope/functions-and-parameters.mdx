@@ -1,0 +1,97 @@
+---
+title: Functions and Parameters
+description: Define functions, pass values, use defaults, and return results.
+---
+
+A function groups a task and gives it a name. Parameters receive values when the function is called. `return` sends a result back and ends that call; without it, the result is `undefined`.
+
+```js
+function calculateTotal(price, quantity = 1) {
+  return price * quantity;
+}
+
+console.log(calculateTotal(8, 3)); // 24
+console.log(calculateTotal(8)); // 8
+```
+
+A default parameter is used when an argument is omitted or explicitly `undefined`, but not when it is `null`. JavaScript allows extra arguments and does not enforce parameter types, so validate inputs at application boundaries.
+
+Functions are values. An arrow function is a compact expression and works well for short callbacks:
+
+```js
+const prices = [4, 7, 10];
+const doubled = prices.map((price) => price * 2);
+console.log(doubled); // [8, 14, 20]
+```
+
+With braces, an arrow function needs an explicit `return`: `(x) => { return x * 2; }`. A concise arrow expression returns implicitly: `(x) => x * 2`. Avoid an arrow when you need a method's dynamic `this`; the next lesson explains why.
+
+Rest parameters collect remaining arguments into an array:
+
+```js
+function sum(...numbers) {
+  return numbers.reduce((total, number) => total + number, 0);
+}
+console.log(sum(2, 3, 4)); // 9
+```
+
+Parameters hold values. For objects, that value is a reference to the same object: changing `person.name` inside a function is visible to its caller. Reassigning the local parameter itself does not replace the caller's variable.
+
+## Read a function call step by step
+
+When `calculateTotal(8, 3)` runs, JavaScript creates a new call with `price = 8` and `quantity = 3`. It evaluates `price * quantity`, returns 24, then resumes at the call site. Each call gets its own parameter bindings. The default `quantity = 1` is used only when that argument is absent or `undefined`.
+
+```js
+console.log(calculateTotal(8, undefined)); // 8
+console.log(calculateTotal(8, null)); // 0: null is coerced by multiplication
+```
+
+That second result is a good reason to validate inputs instead of assuming a default parameter protects every bad call. A production `calculateTotal()` might reject a non-finite price or a non-integer quantity.
+
+Functions can call other functions, but be careful with recursion: a recursive function needs a base case that eventually stops. For example, `countdown(n)` can call itself with `n - 1` until `n === 0`. Iteration is often simpler for large counts because deep recursion can exhaust the call stack.
+
+## Callbacks and side effects
+
+`map()` accepts a callback and calls it once for each array item, then collects the returned values. `forEach()` also calls a callback, but it returns `undefined`; choose it for side effects such as logging. A function that calculates a value without changing outside state is easier to test and reuse.
+
+**Practice:** Write `clamp(value, minimum, maximum)` using `Math.min()` and `Math.max()`. Test values below, within, and above the range.
+
+**Check:** `Math.min(Math.max(value, minimum), maximum)` gives 0, 5, and 10 for `clamp(-2, 0, 10)`, `clamp(5, 0, 10)`, and `clamp(20, 0, 10)`. Decide how your function should handle `minimum > maximum` rather than returning a surprising result.
+
+## Function forms and return values
+
+Function declarations are hoisted within their scope, so they can be called before their written position. Function expressions and arrow functions are values assigned to bindings and follow the binding's initialization rules. Prefer the form that makes the surrounding code easiest to understand; arrow functions are especially useful for short callbacks.
+
+```js
+function double(value) {
+  return value * 2;
+}
+
+const triple = function (value) {
+  return value * 3;
+};
+
+const quadruple = (value) => value * 4;
+```
+
+A function without an explicit `return` returns `undefined`. In a block-bodied arrow function, write `return` yourself. A concise arrow body returns its expression automatically. Returning a value and printing a value are different: `return` gives data back to the caller; `console.log()` writes a diagnostic message.
+
+## Parameters, defaults, and rest
+
+Parameters receive argument values in order. If fewer arguments are passed, missing parameters are `undefined`. A default parameter is used only for `undefined`, not for `null`, `0`, or an empty string. Rest parameters collect remaining arguments into an array:
+
+```js
+function describe(name, role = "reader", ...tags) {
+  return { name, role, tags };
+}
+
+describe("Asha", undefined, "new", "active");
+```
+
+JavaScript passes values by value. For objects, the copied value is a reference to the same object, so a function can mutate that object's properties. Reassigning the parameter itself does not change the caller's binding. Avoid hidden mutation when a function is expected to calculate and return a result.
+
+## Keep functions focused
+
+A function is easier to reuse when its inputs and outputs are explicit and it performs one coherent job. Pure functions depend only on their arguments and have no side effects; they are straightforward to test. A function that reads the DOM, sends a request, and formats a report is harder to test than three small functions with clear boundaries.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

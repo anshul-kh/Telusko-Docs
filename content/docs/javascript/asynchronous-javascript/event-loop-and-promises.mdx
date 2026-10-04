@@ -1,0 +1,85 @@
+---
+title: Event Loop and Promises
+description: Understand scheduling, promise states, and concurrent tasks.
+---
+
+JavaScript runs ordinary statements to completion. The host handles timers, network I/O, and other outside work, then schedules callbacks. Promise reactions run as microtasks after the current synchronous work finishes and before a later timer callback.
+
+```js
+console.log("A");
+setTimeout(() => console.log("C"), 0);
+Promise.resolve().then(() => console.log("B"));
+// A, B, C
+```
+
+A promise is pending, fulfilled, or rejected. `.then()` transforms a fulfillment; `.catch()` handles rejection; `.finally()` performs cleanup without changing a successful value. Each method returns a new promise, so return from callbacks when building a chain.
+
+```js
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+delay(100).then(() => console.log("done"));
+```
+
+`Promise.all([a, b])` fulfills with all results in input order, or rejects when one rejects. `Promise.allSettled()` waits for every outcome; `Promise.race()` settles with the first settled input. These operations do not create parallel JavaScript threads. They coordinate work the host may perform concurrently. Unbounded fan-out can overload a service, so limit concurrency when processing a large list.
+
+A zero-delay timer is not a guarantee of immediate execution. Long synchronous loops block callbacks and user interaction. Node.js and browsers have different event-loop details, so avoid relying on precise timing between unrelated queues.
+
+## Promise chaining
+
+Each `.then()` callback runs after the previous promise fulfills. Returning a normal value fulfills the next promise with that value; returning another promise makes the chain wait for it. Throwing from a callback rejects the next promise. A `.catch()` handles a rejection and, if it returns normally, turns the chain into a fulfilled promise again.
+
+```js
+Promise.resolve(4)
+  .then((value) => value * 2)
+  .then((value) => { throw new Error(`bad value: ${value}`); })
+  .catch((error) => `recovered from ${error.message}`)
+  .then(console.log);
+```
+
+This propagation is why forgetting `return` inside a `.then()` often starts work without making the outer chain wait for it. In async code, `await` often makes these dependencies easier to read.
+
+## Promise combinators and limits
+
+Choose `all()` when every result is required, `allSettled()` when every outcome matters, `race()` when the first settlement wins, and `any()` when the first fulfillment wins. A timeout built with `race()` does not cancel the losing operation; pair it with cancellation when the underlying API supports it.
+
+Creating a promise usually starts its work immediately. Mapping a large list to thousands of fetches and passing it to `Promise.all()` launches them all at once. Use bounded concurrency for large batches so a remote service, browser, or local machine is not overwhelmed.
+
+## Trace the queue
+
+The example first logs `A` synchronously. `setTimeout()` asks the host to schedule a callback later; zero milliseconds is a minimum delay, not an immediate call. `Promise.resolve().then(...)` schedules a promise reaction as a microtask. When the current script finishes, the runtime handles the microtask before the timer callback, so `B` appears before `C`.
+
+Promises represent future outcomes, not background threads. This distinction matters for CPU work: the loop below blocks before its promise can help anyone:
+
+```js
+function expensive() {
+  return new Promise((resolve) => {
+    let sum = 0;
+    for (let i = 0; i < 10_000_000; i += 1) sum += i;
+    resolve(sum);
+  });
+}
+```
+
+The promise executor runs synchronously. To move heavy computation away from the main thread, use a worker; `await expensive()` does not change where that loop runs.
+
+## Combine failures deliberately
+
+If any input to `Promise.all()` rejects, the combined promise rejects, although other tasks are not automatically canceled. `allSettled()` keeps both successes and failures so you can report each one. A `.catch()` recovers by returning a value, or propagates failure by throwing again. An unhandled rejection is a program error; attach handling at the layer that can make a useful decision.
+
+```js
+const results = await Promise.allSettled([
+  Promise.resolve("ready"),
+  Promise.reject(new Error("offline")),
+]);
+console.log(results[0].status, results[1].status); // fulfilled rejected
+```
+
+Run this in an ES module. Do not assume `finally()` receives the fulfilled value or rejection reason; its callback is for cleanup. It passes through the original outcome unless the cleanup itself throws or rejects.
+
+**Practice:** Predict the `A, B, C` output in “Trace the queue.” Add another `Promise.resolve().then(...)` reaction and a second timer, then explain which callbacks run before the timer queue is processed.
+
+**Check:** The original example logs `A, B, C`: synchronous work runs first, then promise reactions, then the timer callback. Promise reactions queued by the current task run before the next timer task. Avoid depending on precise timing between unrelated timers.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

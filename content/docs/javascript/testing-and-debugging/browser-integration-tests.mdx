@@ -1,0 +1,70 @@
+---
+title: Browser Integration Tests
+description: Test a real page, user actions, and saved state in a browser.
+---
+
+A unit test calls one function directly. A browser integration test checks that several pieces work together: the HTML loads, JavaScript finds the right elements, a user action changes the page, and storage survives a reload. Use the [browser task tracker](/docs/javascript/projects/browser-task-tracker) from the projects section for this lesson. Put its `index.html`, `app.js`, and `server.mjs` in a folder named `task-tracker`.
+
+## Set up Playwright
+
+In that folder, run:
+
+```bash
+npm init -y
+npm install --save-dev @playwright/test
+npx playwright install chromium
+```
+
+The last command installs the browser version required by the installed Playwright package. This test uses Chromium; you can add other browsers later. Serve the page over localhost, because browser behavior for modules, storage, and secure APIs can differ under `file://`.
+
+Configure Playwright to start the project's server during a test run. Stop a manually started `node server.mjs` first, or Playwright may reuse that process instead of starting its own:
+
+```js title="playwright.config.mjs"
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./tests",
+  use: { baseURL: "http://127.0.0.1:4173" },
+  webServer: {
+    command: "node server.mjs",
+    url: "http://127.0.0.1:4173",
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+Create a `tests` folder and save this test inside it:
+
+```js title="tests/task.spec.mjs"
+import { test, expect } from "@playwright/test";
+
+test("a task survives reload and can be completed", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("New task").fill("Read JavaScript");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByText("Read JavaScript")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Read JavaScript")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Complete Read JavaScript" }).check();
+  await expect(page.getByRole("checkbox", { name: "Complete Read JavaScript" })).toBeChecked();
+});
+```
+
+Run `npx playwright test`. Playwright starts the local server, opens a fresh browser context for the test, and performs the actions. The reload stays in the same context, so the test can check `localStorage` persistence. Locators based on a field label or button role also reveal whether the interface exposes useful names to assistive technology.
+
+If the test fails, run `npx playwright test --headed` to watch the interaction. Inspect the failing assertion before adding a delay: Playwright's `expect()` already waits for the condition to become true. Fixed sleeps tend to make tests slower and still fail on a busy machine.
+
+**Practice:** Add a second test that creates a task, clicks its Delete button, and checks that the task text disappears. Add a keyboard test that submits the form with Enter. Name each test after the behavior it proves.
+
+## Stable browser tests
+
+Prefer locators based on accessible roles and labels because they resemble how a person identifies controls and catch missing accessible names. Use explicit test IDs only when an element has no useful user-facing semantic locator. Avoid selecting by fragile CSS structure or styling classes.
+
+Each test should start from controlled state. Clear storage or create a fresh browser context when persistence from another test would affect the result. Check visible behavior and important network outcomes, not internal implementation details that users cannot observe.
+
+## Diagnose failures
+
+Use Playwright traces, screenshots, and network logs to inspect a failure. If a page is slow, wait for a meaningful condition such as a locator becoming visible rather than adding a fixed sleep. Keep assertions specific: the right task should appear, the relevant control should be enabled, and errors should be visible to the user.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

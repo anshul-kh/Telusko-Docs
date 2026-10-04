@@ -1,0 +1,80 @@
+---
+title: DOM and Events
+description: Find elements, change the page, and respond to user actions.
+---
+
+The **Document Object Model** (DOM) is the browser's in-memory tree of an HTML page. JavaScript can find nodes and change them. That makes a page interactive without replacing the entire document. DOM methods are browser APIs; they are unavailable in an ordinary Node.js script.
+
+Create these files side by side and open `index.html` in your browser:
+
+```html title="index.html"
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Counter</title></head>
+  <body>
+    <button id="increment" type="button">Add one</button>
+    <output id="count" aria-live="polite">0</output>
+    <script src="./main.js" defer></script>
+  </body>
+</html>
+```
+
+```js title="main.js"
+const button = document.querySelector("#increment");
+const output = document.querySelector("#count");
+let count = 0;
+
+button.addEventListener("click", () => {
+  count += 1;
+  output.textContent = String(count);
+});
+```
+
+`querySelector("#increment")` finds the element whose `id` is `increment`. `addEventListener()` registers a callback; it does **not** call the callback immediately. Every click changes the `count` binding and sets the output's text. `aria-live="polite"` lets assistive technology announce updates without interrupting the user.
+
+## Event targets and delegation
+
+An event has a `target`, the original element where it began, and a `currentTarget`, the element whose listener is currently running. In a delegated listener these differ: a child button may be the target while the list is the current target. Use `closest()` to find the intended control and confirm it belongs to the container before acting.
+
+Events bubble through ancestors unless their behavior says otherwise. Delegation uses that bubbling to handle many current or future child elements with one listener. It is especially useful for dynamic lists, but do not delegate unrelated interactions so far up the page that the handler becomes difficult to reason about.
+
+## Creating and removing elements
+
+Use `document.createElement()`, set `textContent`, then append the new node. Keep untrusted text as text:
+
+```js
+const list = document.createElement("ul");
+for (const label of ["Read", "Practice"]) {
+  const item = document.createElement("li");
+  item.textContent = label;
+  list.append(item);
+}
+document.body.append(list);
+```
+
+To respond to many similar elements, attach one listener to a parent and inspect `event.target.closest("button")`. This is **event delegation**. Events normally bubble from the clicked element through ancestors. `event.preventDefault()` stops a default browser action such as form submission; `event.stopPropagation()` stops bubbling and should be used only when necessary.
+
+For example, a list can handle any number of Delete buttons with one listener. The buttons need a `data-id` attribute containing the task ID:
+
+```js
+const tasksList = document.querySelector("#tasks");
+tasksList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-id]");
+  if (!button || !tasksList.contains(button)) return;
+  console.log("Delete task", button.dataset.id);
+});
+```
+
+The click begins on the button or a child inside it and bubbles to `tasksList`. `closest()` searches upward for the matching button; `contains()` ensures that button belongs to this list. Newly added buttons also work without registering new listeners. If `event.target` could be a non-element node in a specialized case, check it is an `Element` before calling `closest()`.
+
+**Common mistake:** `document.querySelector()` returns `null` when there is no match. A typo in the `id` then makes `button.addEventListener` fail. Inspect the HTML and the console error before changing code blindly.
+
+**Try it:** Add a second button labelled “Reset” that sets `count` and the output back to zero. Use a separate listener and verify the displayed number stays in sync with the variable.
+
+## Listener lifetime and keyboard access
+
+Listeners live as long as their target and callback remain reachable. For temporary UI such as a dialog or a component that mounts and unmounts, remove listeners when the interface is removed. `addEventListener()` supports an `AbortSignal`; aborting its controller removes all listeners registered with that signal, which can simplify cleanup.
+
+Use native controls whenever possible. Buttons already work with Enter and Space; links work with Enter and provide navigation semantics. A custom keyboard interaction needs visible focus, predictable key behavior, and appropriate semantics. Avoid using click handlers on generic containers when a button or link describes the action correctly.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

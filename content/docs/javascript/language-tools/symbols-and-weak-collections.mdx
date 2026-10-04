@@ -1,0 +1,51 @@
+---
+title: Symbols and Weak Collections
+description: Use unique keys, understand object identity, and know when weak references help.
+---
+
+An object's property keys are strings or **symbols**. A symbol is a unique primitive value, even when two symbols have the same description. That makes it useful for attaching a property without colliding with a normal string key.
+
+```js
+const internalId = Symbol("id");
+const otherId = Symbol("id");
+console.log(internalId === otherId); // false
+
+const task = { title: "Read", [internalId]: 42 };
+console.log(task[internalId]); // 42
+console.log(Object.keys(task)); // ["title"]
+console.log(Reflect.ownKeys(task)); // ["title", Symbol(id)]
+```
+
+The description helps debugging; it is not an access token. Symbols are omitted by `Object.keys()` and JSON serialization, but `Reflect.ownKeys()` can discover them. `Symbol.iterator` is a *well-known symbol* that tells `for...of` how to iterate an object. `Symbol.for("shared")` is different from `Symbol("shared")`: it retrieves a symbol from a shared registry instead of making a fresh one.
+
+## Object identity and weak keys
+
+`Map` accepts object keys and keeps those keys reachable for as long as the map keeps them. `WeakMap` accepts object keys (and non-registered symbols) but does not keep those keys alive by itself. Entries may disappear when a key is no longer reachable elsewhere, so a `WeakMap` cannot be iterated or counted. It is useful for metadata tied to an object's lifetime.
+
+```js
+const metadata = new WeakMap();
+const button = { label: "Save" };
+metadata.set(button, { clicks: 0 });
+metadata.get(button).clicks += 1;
+console.log(metadata.get(button).clicks); // 1
+```
+
+`WeakSet` similarly tracks object membership without owning the objects' lifetime. Use ordinary `Map` and `Set` when you need to list entries, know the size, or use primitive keys. Garbage collection timing is deliberately unpredictable; never write program logic that depends on an entry disappearing at a particular moment.
+
+**Common mistake:** Two objects with equal-looking properties are still different keys: `new Map([[{}, 1]]).get({})` is `undefined`. Keep and reuse the same object reference when it is the key.
+
+**Try it:** Store metadata for two separate objects in a `WeakMap`. Show that changing one object's metadata does not affect the other, then attempt to enumerate the weak map and explain why that API is absent.
+
+## Symbols as property keys
+
+Calling `Symbol()` creates a unique primitive value. Symbols are useful for property keys when a library needs a key unlikely to collide with a caller's string property. A symbol property is not included in `Object.keys()` or ordinary JSON serialization, but it can be found with `Object.getOwnPropertySymbols()` or `Reflect.ownKeys()`.
+
+`Symbol.for(name)` uses a shared global symbol registry and returns the same symbol for the same key. Use it only when separate parts of an application intentionally need to agree on that key. Symbols are not a way to make data private; code can still inspect symbol properties.
+
+## Weak references
+
+`WeakMap` keys and `WeakSet` members can be objects or non-registered symbols in runtimes that support symbol weak keys. Registered symbols created with `Symbol.for()` cannot be weak keys. A weak collection does not keep its keys alive solely because they are present in the collection. This makes it useful for metadata associated with object lifetimes, such as caching a derived value without preventing the original object from being collected.
+
+Weak collections cannot be enumerated or measured with `.size`. If they exposed their contents, garbage collection timing could make iteration nondeterministic. Choose a normal `Map` when you need to list entries, count them, or guarantee that they remain available.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

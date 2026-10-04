@@ -1,0 +1,55 @@
+---
+title: Typed Arrays and Binary Data
+description: Read and write bytes with ArrayBuffer, Uint8Array, and DataView.
+---
+
+Ordinary arrays can hold values of different types and are designed for general collections. Binary formats need a known number of bytes and exact representations. `ArrayBuffer` owns a block of bytes; **views** such as `Uint8Array` and `DataView` interpret those bytes. You meet this when handling files, images, network protocols, or cryptographic APIs.
+
+```js
+const buffer = new ArrayBuffer(4); // four bytes, initially zero
+const bytes = new Uint8Array(buffer);
+bytes[0] = 255;
+bytes[1] = 256; // wraps to 0 in an unsigned 8-bit view
+console.log([...bytes]); // [255, 0, 0, 0]
+console.log(buffer.byteLength); // 4
+```
+
+`Uint8Array` is a typed array whose elements are unsigned integers from 0 to 255. It uses the same buffer, not a copy. For multi-byte values, byte order matters. `DataView` lets you state the order explicitly:
+
+```js
+const view = new DataView(buffer);
+view.setUint16(0, 0x1234, false); // big-endian
+console.log([...bytes]); // [18, 52, 0, 0]
+console.log(view.getUint16(0, false)); // 4660
+```
+
+`0x1234` is a hexadecimal number. Its bytes are `0x12` (18) and `0x34` (52). The final argument `false` means big-endian. Using the wrong byte order gives a different number, which is a common binary-file bug.
+
+Text needs an encoding. `TextEncoder` converts a string to UTF-8 bytes, and `TextDecoder` converts bytes back. Do not assume one character equals one byte:
+
+```js
+const encoded = new TextEncoder().encode("cafe");
+console.log(encoded.length); // 4
+console.log(new TextDecoder().decode(encoded)); // cafe
+```
+
+`ArrayBuffer` is not an array of numbers. Use a view to access its contents. When an API gives you a `Uint8Array`, check its `byteOffset` and `byteLength` before reading the whole underlying buffer; views can cover only part of it.
+
+**Try it:** Encode a string containing a non-ASCII character, compare the string's `.length` with the resulting byte count, then decode it back.
+
+## Bytes, views, and endianness
+
+`ArrayBuffer` owns a fixed-size block of raw bytes. A typed array such as `Uint8Array` or `Float32Array` views those bytes as elements of one numeric type. `DataView` reads and writes several integer and floating-point widths at chosen byte offsets and lets you specify endianness for multi-byte values.
+
+```js
+const buffer = new ArrayBuffer(4);
+const view = new DataView(buffer);
+view.setUint32(0, 0x12345678, false); // big-endian
+console.log(view.getUint8(0).toString(16)); // "12"
+```
+
+Typed arrays are useful for image pixels, audio, file formats, and network protocols. They are not ordinary arrays: they have fixed length, coerce assigned values to their element type, and do not support every array method in every environment. Use `Uint8Array` for raw bytes and `TextEncoder`/`TextDecoder` for UTF-8 text rather than assuming one character equals one byte.
+
+When parsing binary data, check that the buffer contains enough bytes before reading an offset. Validate lengths from untrusted files or network responses to avoid out-of-range reads and excessive memory use. Transferring an `ArrayBuffer` to a worker can avoid copying, but detaches the original buffer from the sender.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

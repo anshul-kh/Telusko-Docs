@@ -1,0 +1,62 @@
+---
+title: Build an HTTP API
+description: Understand requests, responses, status codes, and JSON handling in Node.js.
+---
+
+An HTTP server receives a request with a method and URL, then sends a response with a status, headers, and optional body. Node's built-in `node:http` module gives you these pieces directly. Learning them first makes frameworks easier to understand later.
+
+Save the following file and run `node server.mjs`:
+
+```js title="server.mjs"
+import { createServer } from "node:http";
+
+const tasks = [{ id: 1, title: "Read", done: false }];
+
+const server = createServer((request, response) => {
+  const url = new URL(request.url, "http://localhost");
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+
+  if (request.method === "GET" && url.pathname === "/tasks") {
+    response.writeHead(200);
+    response.end(JSON.stringify(tasks));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/health") {
+    response.writeHead(200);
+    response.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+
+  response.writeHead(404);
+  response.end(JSON.stringify({ error: "Not found" }));
+});
+
+server.listen(3000, () => console.log("Listening on http://localhost:3000"));
+```
+
+Visit `http://localhost:3000/tasks` and `/health` in a browser. A browser address bar sends GET requests. Use `curl http://localhost:3000/tasks` from a terminal if you prefer. Press Ctrl+C to stop the server.
+
+`new URL()` parses the path and query safely. Compare `url.pathname` to a route; do not compare the raw URL when query parameters may be present. Set the JSON content type before ending the response. Return after sending a response so the handler cannot accidentally send twice.
+
+## HTTP request lifecycle
+
+An HTTP server receives a method, URL, headers, and possibly a body. A handler should validate the method and route, parse a bounded request body, validate its data, perform the operation, and send a status code with an appropriate response. Return 201 for a created resource, 204 when there is intentionally no response body, and a client error status for invalid requests.
+
+Never assume a request body is valid JSON or small. Limit its size, handle malformed input, and avoid building an unbounded buffer in memory. Set response content types accurately. An unknown route should return 404, and an unsupported method for a known route can return 405.
+
+## Receiving JSON
+
+For POST or PATCH, the request body arrives as a stream of chunks. Limit its size, collect it, parse with `JSON.parse()` inside `try/catch`, validate each field, and return `400` for malformed input. A request being syntactically valid JSON does **not** make it valid application data. The project chapter builds a complete CRUD API with this process.
+
+Data in `tasks` is in memory, so restarting the process resets it. Persistent storage needs a file or database, and concurrent writes need careful handling. Do not expose a learning server publicly without adding request limits, authentication where needed, and operational safeguards.
+
+**Try it:** Add a `GET /tasks/count` route returning `{ "count": tasks.length }`. Put it before any future dynamic `/tasks/:id` route, then check both routes and an unknown path.
+
+## Production boundaries
+
+An in-memory array disappears when the process restarts and is shared only by that one process. Persistent applications need a database or another storage system, along with rules for concurrent updates. Do not treat an example server's data model as production persistence.
+
+Production servers also need request timeouts, graceful shutdown, structured logs, and controlled error responses. Avoid returning stack traces or secrets to clients. Authentication and authorization checks belong on the server and should be applied to every protected route, not only when rendering a page.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

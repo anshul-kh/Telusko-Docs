@@ -1,0 +1,23 @@
+{
+  "root": false,
+  "title": "JavaScript",
+  "icon": "Braces",
+  "pages": [
+    "getting-started.mdx",
+    "introduction.mdx",
+    "foundations",
+    "values-and-variables",
+    "expressions-and-control-flow",
+    "functions-and-scope",
+    "data-collections",
+    "objects-and-classes",
+    "language-tools",
+    "modules-and-packages",
+    "asynchronous-javascript",
+    "browser-development",
+    "node-development",
+    "testing-and-debugging",
+    "production-habits",
+    "projects"
+  ]
+}

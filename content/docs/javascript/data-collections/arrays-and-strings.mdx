@@ -1,0 +1,72 @@
+---
+title: Arrays and Strings
+description: Index values, transform arrays, and work with text safely.
+---
+
+An array is an ordered, mutable collection. Indexes start at zero. `length` is the number of slots, and `Array.isArray(value)` distinguishes arrays from other objects.
+
+```js
+const tasks = ["read", "code"];
+tasks.push("test");
+console.log(tasks[0], tasks.length); // read 3
+console.log(tasks.at(-1)); // test
+```
+
+Array methods have different jobs. `map` transforms each item, `filter` keeps matching items, `find` returns the first match, `some` answers whether any match, and `reduce` combines values. `map`, `filter`, and `toSorted` return new arrays; `push`, `splice`, and `sort` mutate the original. Choose deliberately.
+
+```js
+const numbers = [4, 1, 9];
+const squares = numbers.map((number) => number ** 2);
+const high = numbers.filter((number) => number >= 4);
+const ascending = [...numbers].sort((a, b) => a - b);
+console.log(squares, high, ascending);
+```
+
+The numeric comparator matters: without it, `sort()` compares strings, so `[2, 10].sort()` puts 10 first.
+
+Strings are immutable. Useful methods include `trim`, `toLowerCase`, `includes`, `slice`, `split`, and `replaceAll`. `split()` makes an array; `join()` turns an array back into a string. JavaScript string indexes count UTF-16 code units, so a visible emoji may occupy two positions. `for...of` iterates Unicode code points, though a grapheme can still contain several code points.
+
+```js
+const tags = " js, web, node ".trim().split(",").map((tag) => tag.trim());
+console.log(tags.join(" | ")); // js | web | node
+```
+
+## A worked data transformation
+
+Imagine prices read from a checkout form: `["12", "7", "bad"]`. First convert each string, then reject invalid numbers, then total the valid ones. Breaking the work into visible steps makes unexpected input easier to diagnose.
+
+```js
+const rawPrices = ["12", "7", "bad"];
+const parsed = rawPrices.map((text) => Number(text));
+const valid = parsed.filter((price) => Number.isFinite(price));
+const total = valid.reduce((sum, price) => sum + price, 0);
+console.log(parsed, valid, total); // [12, 7, NaN] [12, 7] 19
+```
+
+In an actual checkout, silently discarding `"bad"` would be wrong: reject the transaction and tell the user which input is invalid. The example separates transformation from validation so you can see where the decision belongs. `reduce()` starts at 0, which also makes an empty array total to 0. Without an initial value, reducing an empty array throws.
+
+`slice(start, end)` returns a new array portion; `splice(start, deleteCount)` changes the original array. The similar names are easy to mix up. When you need a reordered copy, use `[...numbers].sort(compare)` or a supported non-mutating method such as `toSorted(compare)`.
+
+**Practice:** Given `['  Ada ', 'Lin', '  Grace']`, produce a new array of trimmed uppercase names without changing the original.
+
+**Check:** `names.map((name) => name.trim().toUpperCase())` produces `['ADA', 'LIN', 'GRACE']`. The source array still contains its original spacing because `map()` creates a new array and strings are immutable.
+
+## Transform, select, and summarize
+
+Array methods express common data tasks. `map()` creates one result for each item. `filter()` keeps items whose callback returns a truthy value. `find()` returns the first matching item or `undefined`; `some()` and `every()` answer whether at least one or all items match. `reduce()` combines items into one result and should be used when the combination is clearer than a dedicated method.
+
+```js
+const prices = [4, 10, 7];
+const discounted = prices.filter((price) => price >= 5).map((price) => price * 0.9);
+const total = prices.reduce((sum, price) => sum + price, 0);
+```
+
+These callbacks run synchronously and in array order. Avoid mutating the array while iterating it; additions and removals can make the traversal difficult to predict. `sort()` mutates its array, and its default ordering compares string representations. For numbers, supply a comparator such as `(a, b) => a - b`.
+
+## Strings are Unicode text
+
+Strings are immutable sequences of UTF-16 code units. Their `.length` is not always the number of user-perceived characters: many emoji use two code units, and combined accents can contain multiple code points. `for...of` iterates code points, but even that does not always count visible grapheme clusters. Use `Intl.Segmenter` when a UI needs user-perceived character boundaries.
+
+String methods such as `slice()`, `includes()`, `startsWith()`, `trim()`, and `replace()` return strings and do not modify the original. For case-insensitive comparison across languages, use locale-aware methods such as `toLocaleLowerCase()` where appropriate instead of assuming every language follows English casing rules.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

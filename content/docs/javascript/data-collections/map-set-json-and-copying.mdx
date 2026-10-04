@@ -1,0 +1,76 @@
+---
+title: Map, Set, JSON, and Copying
+description: Choose collection types and avoid accidental shared-state bugs.
+---
+
+Use an object for a record with known property names. Use `Map` for a dynamic key-value collection, especially when keys are not strings. Use `Set` for unique values. Both preserve insertion order during iteration.
+
+```js
+const visits = new Map();
+visits.set("/home", 2);
+visits.set("/about", 1);
+console.log(visits.get("/home")); // 2
+
+const unique = new Set(["js", "web", "js"]);
+console.log([...unique]); // ["js", "web"]
+```
+
+Objects and arrays are reference values. Assigning one to a new variable does not copy it. Spread makes a **shallow** copy: nested objects still refer to the same data.
+
+```js
+const original = { profile: { name: "Asha" } };
+const shallow = { ...original };
+shallow.profile.name = "Lee";
+console.log(original.profile.name); // Lee
+```
+
+For supported data shapes, `structuredClone(original)` makes a deep copy. It cannot clone functions and may not preserve custom class behavior. Prefer explicit copies when the shape is small and known.
+
+JSON is a text format for data exchange. `JSON.stringify(value)` serializes, and `JSON.parse(text)` parses. JSON has strings, numbers, booleans, null, arrays, and objects; it cannot represent functions, `undefined`, `BigInt`, or cycles. Date objects become strings, so parse dates deliberately after reading them.
+
+```js
+const text = JSON.stringify({ completed: false, tags: [...unique] });
+const data = JSON.parse(text);
+console.log(data.tags[0]); // js
+```
+
+Do not use JSON round-tripping as a universal deep-copy method. It silently loses unsupported values.
+
+## Pick a structure by the question
+
+If you need “what is the title of task 7?”, a `Map` keyed by ID makes lookup direct. If you need “which tags appear at least once?”, a `Set` models uniqueness. If you need an ordered list of tasks, an array is the natural fit. A plain object is useful for a record with known fields such as `{ id, title, done }`. Choosing the right type makes later code simpler than forcing every problem into an array or object.
+
+JSON turns in-memory values into text for files and HTTP. Parsing JSON creates *new* objects; it does not reconnect references to original objects. That can be useful when isolating data, but JSON is not a cloning contract. For example, `JSON.stringify({ createdAt: new Date() })` writes a string, and `JSON.parse()` reads a string, not a `Date` instance.
+
+If data came from outside the program, validate the parsed structure. `JSON.parse('null')` succeeds, and so does `JSON.parse('[]')`; neither is a task record. A `try/catch` handles invalid syntax, while shape checks handle valid JSON with the wrong meaning.
+
+**Practice:** Count how often each word appears in `['red', 'blue', 'red']` with a `Map`, then convert the entries to an array using `[...counts]`.
+
+**Check:** After iterating, `counts.get('red')` is 2 and `[...counts]` is `[['red', 2], ['blue', 1]]` in insertion order. Initialize each count with `(counts.get(word) ?? 0) + 1`.
+
+## Map, Set, and plain objects
+
+Use a plain object for records with named string or symbol properties, such as a user with `name` and `email`. Use `Map` when keys are dynamic or can be any value, when insertion order matters, or when frequent additions and removals are expected. Use `Set` to maintain unique values and test membership. A `Set` removes duplicates according to its value-comparison rules, but two separately created objects remain distinct members.
+
+```js
+const seen = new Set(["a", "b", "a"]);
+console.log(seen.size); // 2
+console.log(seen.has("b")); // true
+
+const metadata = new Map();
+metadata.set("job-7", { state: "queued" });
+```
+
+Map and Set preserve insertion order during iteration. Convert them to arrays with `[...map]`, `[...set]`, or `Array.from(...)` when an API expects an array. JSON has no native Map or Set representation; decide on an explicit array or object format before serializing.
+
+## JSON is a data format
+
+`JSON.stringify()` serializes supported data to text; `JSON.parse()` turns JSON text into values. JSON supports strings, finite numbers, booleans, null, arrays, and plain object properties. It does not preserve functions, `undefined`, symbols, prototypes, Map, Set, or BigInt. Some unsupported object properties are omitted, while unsupported array entries become `null`; circular references throw.
+
+Parsing only confirms valid JSON syntax. It does not confirm that the result has the fields, types, or ranges your application expects. Validate parsed data before trusting it, especially when it came from a network, file, or browser storage.
+
+## Copying has depth
+
+Assignment copies a primitive value but copies an object reference. `{ ...record }` and `[...items]` make shallow copies: the outer container is new, nested objects are still shared. `structuredClone()` can deeply copy many built-in data types and handles cycles, but it cannot clone functions or every host object. Choose the copy behavior deliberately and avoid assuming JSON stringify/parse is a universal cloning technique.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

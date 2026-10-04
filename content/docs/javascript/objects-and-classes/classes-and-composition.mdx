@@ -1,0 +1,90 @@
+---
+title: Classes and Composition
+description: Construct instances, inherit carefully, and build behavior from smaller parts.
+---
+
+`class` is syntax for constructing objects and sharing methods through a prototype. A constructor initializes an instance. A private field begins with `#` and cannot be read from outside the class.
+
+```js
+class BankAccount {
+  #balance = 0;
+
+  constructor(owner) { this.owner = owner; }
+
+  deposit(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new RangeError("Amount must be positive");
+    }
+    this.#balance += amount;
+    return this.#balance;
+  }
+
+  get balance() { return this.#balance; }
+}
+
+const account = new BankAccount("Asha");
+account.deposit(25);
+console.log(account.balance); // 25
+```
+
+`get` exposes a computed property, so callers read `account.balance` without parentheses. Private fields protect access through class syntax, but they do not replace authorization or server-side validation.
+
+`extends` creates a subclass. A subclass constructor must call `super(...)` before using `this`. Inheritance is useful when every subclass truly **is a** specialized base object; deep hierarchies make behavior hard to trace.
+
+Composition often stays simpler: pass a small dependency into a class or function.
+
+```js
+class PurchaseService {
+  constructor(savePurchase) { this.savePurchase = savePurchase; }
+  checkout(purchase) { return this.savePurchase(purchase); }
+}
+
+const service = new PurchaseService((purchase) => `Saved ${purchase.id}`);
+console.log(service.checkout({ id: 7 }));
+```
+
+The service does not need to inherit from a database class; it receives the behavior it needs. This also makes tests easy to write.
+
+## Instance, private, and static members
+
+`owner` and `#balance` belong to each account instance. `deposit()` and the `balance` getter are methods shared through the class's prototype. A **static** method belongs to the class constructor itself, so callers use `BankAccount.from(...)`, not `account.from(...)`:
+
+```js
+class Point {
+  constructor(x, y) { this.x = x; this.y = y; }
+  static origin() { return new Point(0, 0); }
+  distanceFromOrigin() { return Math.hypot(this.x, this.y); }
+}
+console.log(Point.origin().distanceFromOrigin()); // 0
+```
+
+Use static methods for operations associated with a type rather than one instance. A getter is good for a cheap, read-only derived value. If setting a value has rules, a setter can enforce them, but an explicit method like `deposit()` often communicates an important action better.
+
+The `#balance` field is inaccessible outside the declaring class body, including from a subclass. This is **encapsulation**: callers use the operations the class exposes. It prevents accidental direct mutation, but the class still needs to validate amounts. Inheritance can reuse behavior, while composition can combine capabilities without forcing an “is a” relationship. Both tools have a place; choose the model that matches the domain.
+
+**Practice:** Add `withdraw(amount)` to `BankAccount`. Reject non-positive amounts and withdrawals larger than the balance.
+
+**Check:** After `deposit(25)` and `withdraw(10)`, `balance` should be 15. A failed withdrawal must leave the balance unchanged. Test zero, a negative amount, and an amount above the balance.
+
+## Class details
+
+The constructor initializes each instance. Instance methods live on the class prototype and are shared by its instances. Static methods live on the class itself and are called as `ClassName.method()`. Private fields begin with `#`; they can only be read or written by code inside the declaring class and are not ordinary string-keyed properties.
+
+```js
+class Temperature {
+  #celsius;
+  constructor(celsius) { this.#celsius = celsius; }
+  get fahrenheit() { return this.#celsius * 9 / 5 + 32; }
+  static fromFahrenheit(value) { return new Temperature((value - 32) * 5 / 9); }
+}
+```
+
+Getters and setters look like property access but execute methods. Use them when they preserve an invariant or provide a computed view, not to hide expensive work or surprising side effects. Avoid a setter that silently accepts invalid state; validate and fail clearly.
+
+## Composition and object contracts
+
+Composition builds a larger behavior from smaller objects or functions. For example, a service can receive a storage object and a clock as constructor arguments, making it possible to substitute test implementations without adding a class hierarchy. This is dependency injection in a simple form.
+
+Keep the public interface small. State which methods may change state, what errors they can produce, and whether returned objects can be mutated by callers. JavaScript does not enforce an interface at runtime, so tests and clear contracts help ensure alternate implementations behave consistently.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

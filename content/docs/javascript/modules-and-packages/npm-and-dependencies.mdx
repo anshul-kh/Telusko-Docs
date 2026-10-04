@@ -1,0 +1,53 @@
+---
+title: npm and Dependencies
+description: Set up package.json, scripts, versions, and repeatable installs.
+---
+
+`npm` manages packages and project commands. In an empty practice folder, `npm init -y` creates `package.json`. For a new ES module project, add `"type": "module"` and a script:
+
+```json title="package.json"
+{
+  "name": "javascript-practice",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node main.js",
+    "test": "node --test"
+  }
+}
+```
+
+Now `npm run start` runs `main.js`, and `npm test` runs the built-in Node test runner. `private: true` prevents accidental publication. `dependencies` are needed to run the app; `devDependencies` are development tools. `npm install package-name` adds a runtime package, and `npm install --save-dev package-name` adds a development package.
+
+`package-lock.json` records the resolved dependency tree. Commit it for an application and use `npm ci` in CI or a clean deployment to reproduce that tree. Do not commit `node_modules`; it is generated from the manifest and lockfile. Version ranges such as `^1.2.3` allow compatible updates under semantic-version conventions, but compatibility is a promise by package authors, not a runtime guarantee. Review and test updates.
+
+Prefer platform APIs and the standard library when they solve a small problem well. Every third-party package adds code, maintenance, and security exposure. Never paste a secret into `package.json` or client-side JavaScript; browser bundles are visible to users.
+
+## Follow an install
+
+When you run `npm install`, npm reads `package.json`, resolves acceptable package versions, downloads them into `node_modules`, and records the exact resolved tree in `package-lock.json`. Another developer can use `npm ci` with that lockfile to get a repeatable clean install. If the manifest and lockfile disagree, `npm ci` fails instead of quietly updating the lockfile, which is useful in CI.
+
+An npm script is simply a named command. It is not a JavaScript function and does not run automatically unless it is a lifecycle script. For the manifest above, `npm run start` invokes `node main.js` in the project directory. `npm test` is shorthand for `npm run test`. A script may rely on tools installed in the project's `node_modules/.bin`, so contributors can run the same command without global installs.
+
+Packages may bring **transitive dependencies**: packages they need internally. A small direct dependency can therefore add many files. Before adding one, check whether the platform already provides the needed API, whether the package is maintained, and whether its license and update policy fit the project.
+
+For a reusable published library, semantic version ranges and peer dependencies need more care than an application lockfile. This course builds applications, so the default guidance is to commit the lockfile and test updates deliberately.
+
+**Practice:** Create the manifest above, add `main.js` with `console.log("ready")`, and run `npm run start`. Explain the difference between `package.json` and `package-lock.json`.
+
+**Check:** `package.json` describes your project and allowed dependencies. The lockfile records the particular resolved dependency tree used for reproducible installs.
+
+## Dependencies and project scripts
+
+`dependencies` lists packages required when the application runs. `devDependencies` lists tools used to develop, test, or build it. A version range in `package.json` describes acceptable versions; the lockfile records the exact resolved tree, including transitive dependencies. Commit the lockfile for an application and use `npm ci` in automated builds to install exactly from it.
+
+Review package changes before accepting them. A package can run scripts during installation, introduce transitive packages, change licenses, or have a compromised release. Keep dependencies purposeful, update them regularly, and inspect security advisories. Do not install a package just to avoid writing a few lines of simple code.
+
+The `scripts` field gives names to repeatable project commands such as `start`, `test`, and `build`. npm adds `node_modules/.bin` to the path while running a script, so locally installed tools can be invoked by command name. Prefer a project's local version so contributors and CI use the same tool version.
+
+Packages follow their own module formats and export rules. Read package documentation for supported runtimes and import forms. When a command is not found, check whether the dependency is installed in this project and whether the command is running from the project directory.
+
+**Checkpoint:** Explain why two developers can have different version ranges but still install the same resolved versions from a shared lockfile, and why `npm ci` is useful in CI.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

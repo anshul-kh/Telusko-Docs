@@ -1,0 +1,63 @@
+---
+title: Forms and Storage
+description: Read user input, validate it, and persist small amounts of browser data.
+---
+
+A form gives users a familiar way to enter data and submit it with a keyboard. The browser performs basic validation for attributes such as `required` and `minlength`, but your JavaScript should still check the values it needs. A server must validate again because client-side checks can be bypassed.
+
+Put these files together and open `index.html` in a browser. For predictable persistence, serve the folder over localhost, as in the [browser project](/docs/javascript/projects/browser-task-tracker); `localStorage` behavior for pages opened directly through `file://` varies by browser.
+
+```html title="index.html"
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Greeting</title></head>
+  <body>
+    <form id="greeting-form">
+      <label for="name">Your name</label>
+      <input id="name" name="name" required minlength="2">
+      <button type="submit">Greet</button>
+    </form>
+    <p id="result" aria-live="polite"></p>
+    <script src="./main.js" defer></script>
+  </body>
+</html>
+```
+
+```js title="main.js"
+const form = document.querySelector("#greeting-form");
+const nameInput = document.querySelector("#name");
+const result = document.querySelector("#result");
+
+nameInput.value = localStorage.getItem("preferredName") ?? "";
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = nameInput.value.trim();
+  if (name.length < 2) {
+    result.textContent = "Enter at least two characters.";
+    return;
+  }
+  localStorage.setItem("preferredName", name);
+  result.textContent = `Hello, ${name}!`;
+});
+```
+
+`submit` fires when the user clicks the button or presses Enter. `preventDefault()` stops navigation so the page can update in place. `input.value` is always a string; trim it before checking length. `localStorage` saves string values by origin and persists across browser restarts. It is synchronous and can fail in restricted contexts, so keep its use small and handle failures in larger apps. `sessionStorage` is scoped to a tab session.
+
+## Validation and form states
+
+Browser constraint validation can improve the experience, but it is not a trust boundary. Read values from the form, normalize only where appropriate (for example, trimming a name), then validate the actual rules your application requires. Do not silently coerce invalid text into a value that appears valid. Use `setCustomValidity()` only when native validation cannot express a needed rule, and clear the custom message when the value changes.
+
+After submission, expose clear states: validation errors, saving, success, and failure. Disable or otherwise protect a submit action while a write is in progress if duplicate submissions would cause harm. Preserve user input when a request fails so the user can correct or retry it.
+
+## Storage limits and recovery
+
+When storing structured data, use `JSON.stringify()` on write and `JSON.parse()` on read, wrapped in `try/catch` for malformed or unavailable data. Storage is editable by the user and readable by scripts on the same origin. Do not place passwords, API secrets, or sensitive session tokens there. Clear obsolete entries with `removeItem()`.
+
+Storage quotas are limited and differ by browser. A write can throw, so a resilient interface should still work for the current session if persistence is unavailable. For larger datasets, indexed queries, or binary data, use IndexedDB rather than synchronously reading and writing large strings in `localStorage`.
+
+Treat saved values as an untrusted cache, not as the authoritative record. Validate their shape on read and provide a recovery path for corrupted or outdated data. When changing a stored schema, use a version field or migrate old entries deliberately.
+
+**Try it:** Add a “Forget me” button that calls `localStorage.removeItem("preferredName")`, clears the input and result, and focuses the input. Reload to confirm persistence is gone.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

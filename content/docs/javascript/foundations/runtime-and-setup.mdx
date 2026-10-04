@@ -1,0 +1,66 @@
+---
+title: Runtime and Setup
+description: Install Node.js, use browser developer tools, and understand where code runs.
+---
+
+JavaScript needs a runtime. A browser runs scripts that can interact with a web page. Node.js runs scripts outside a browser and can read files or listen for HTTP requests. You will use both, but the same language rules apply in each.
+
+## Install and check Node.js
+
+Download the current **LTS** release from [nodejs.org](https://nodejs.org/en/download). Install it with the installer for your operating system, open a *new* terminal, and check:
+
+```bash
+node --version
+npm --version
+```
+
+Both commands should print a version. If `node` is not recognized, restart the terminal and confirm the installer added Node to your `PATH`. `npm` is the package manager bundled with Node; we will use it later. In PowerShell, if an execution-policy error blocks `npm.ps1`, use `npm.cmd` for npm commands. Avoid copying a version number from an old tutorial because release support changes.
+
+## Try the two interactive consoles
+
+Open your browser's developer tools (usually F12 or Ctrl+Shift+J) and enter `2 + 3`. The console evaluates an expression and displays `5`. Then run `node` without a filename in your terminal, enter the same expression, and exit with `.exit`. This interactive mode is called a **REPL**: read, evaluate, print, loop.
+
+```text
+> 2 + 3
+5
+> .exit
+```
+
+Some globals are host-specific. In a browser console, `typeof document` is `"object"`; in Node, it is `"undefined"`. In Node, `typeof process` is `"object"`; in a normal browser page it is `"undefined"`. Test APIs in the environment they belong to.
+
+Think of the console as a scratchpad: it is useful for a one-line experiment, but code disappears when you close it. A saved file is a program you can run again, share, and test. When you type `node hello.mjs`, Node reads that file from the current working directory, parses the JavaScript, then runs it. A **syntax error** means parsing failed before your statements could run; a **runtime error** means the program started and then an operation failed. Both usually include a filename and line number. Read those first.
+
+```text
+javascript-practice/
+  hello.mjs
+  index.html
+  page.js
+```
+
+The terminal's current directory matters. Run `pwd` on macOS/Linux or `Get-Location` in PowerShell to see it. If Node says it cannot find `hello.mjs`, either navigate into the folder or give the correct path. The editor does not run a file merely because it is open.
+
+## Files, scripts, and modules
+
+Use `.mjs` for the first Node examples. It clearly marks a file as an ECMAScript module, so `import` and `export` work without relying on a project setting. A `.js` file can also be an ES module when its nearest `package.json` contains `"type": "module"`. Keep a project consistent: mixing CommonJS (`require`, `module.exports`) and ES modules (`import`, `export`) can create confusing loader errors.
+
+Run `node hello.mjs` from the directory containing the file. The current directory matters for relative paths and package commands. In VS Code, open the project folder itself, then use its integrated terminal.
+
+In a browser, `<script src="./main.js" defer></script>` loads a script after the HTML has been parsed. For modules, use `<script type="module" src="./main.js"></script>`; module scripts are deferred automatically and have their own scope. A relative script path is resolved from the HTML file, not from the editor's open tab.
+
+## Browser files and the console
+
+Open developer tools and inspect the **Console** for output and errors. The **Sources** panel can show loaded files and set breakpoints. If edits do not appear, check that the page loaded the file you changed and reload it.
+
+Some browser features, including modules, storage, and network requests, behave differently from a local file URL. Serve a folder from localhost when a lesson asks for it. Node and browsers have different global objects and security permissions, even though both execute JavaScript.
+
+**Checkpoint:** Create `hello.mjs`, run it from its folder, then move to a different folder and try the same command. Explain why Node cannot find the file in the second location.
+
+## Prepare a folder
+
+Create a folder named `javascript-practice` in your file manager and open it in your editor. Save each Node example as an `.mjs` file; `.mjs` explicitly marks an ECMAScript module. Browser examples will use `.html` and `.js` files. Keep the files so you can revisit them during later lessons.
+
+**Practice:** Print your name with `console.log()` in both consoles. Then run `typeof window` in each and explain the difference.
+
+**Check:** You should see `"object"` in a browser and `"undefined"` in Node. If you see `undefined` printed without quotes in a browser console, remember the console is showing the value returned by your expression, not necessarily text your program logged.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

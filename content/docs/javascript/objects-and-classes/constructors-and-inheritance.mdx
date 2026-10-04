@@ -1,0 +1,83 @@
+---
+title: Constructors and Inheritance
+description: See how new, prototypes, extends, super, and method overriding actually work.
+---
+
+In object-oriented programming, an **object** holds state and behavior. JavaScript objects use **delegation**: if a property is missing on an object, the engine looks for it on that object's prototype, then on the prototype's prototype, until it reaches `null`. That search is the *prototype chain*. A class organizes this mechanism; it does not replace it.
+
+## What new does
+
+Older JavaScript often uses a constructor function. Run this in a browser console or `node`:
+
+```js
+function User(name) {
+  this.name = name;
+}
+User.prototype.greet = function () {
+  return `Hello, ${this.name}`;
+};
+
+const ada = new User("Ada");
+const lin = new User("Lin");
+console.log(ada.greet(), lin.greet()); // Hello, Ada Hello, Lin
+console.log(Object.hasOwn(ada, "name")); // true
+console.log(Object.hasOwn(ada, "greet")); // false
+console.log(Object.getPrototypeOf(ada) === User.prototype); // true
+```
+
+`new User("Ada")` creates an object, links it to `User.prototype`, calls `User` with that object as `this`, then returns it. `name` is stored separately on each instance; `greet` is shared. That is why changing `ada.name` does not change `lin.name`, while both use the same method function. Calling `User("Ada")` without `new` behaves differently and is an error in a module's strict mode; classes avoid that accident by requiring `new`.
+
+## Inheriting with classes
+
+Use `extends` only when the child truly has the base type's contract. A `Moderator` is a kind of `User` here:
+
+```js
+class AccountUser {
+  constructor(name) { this.name = name; }
+  greet() { return `Hello, ${this.name}`; }
+}
+
+class Moderator extends AccountUser {
+  constructor(name, area) {
+    super(name);
+    this.area = area;
+  }
+  greet() { return `${super.greet()} from ${this.area}`; }
+}
+
+const person = new Moderator("Maya", "support");
+console.log(person.greet()); // Hello, Maya from support
+console.log(person instanceof AccountUser); // true
+```
+
+`super(name)` runs the parent constructor and must happen before `this` is used in a derived constructor. The child **overrides** `greet`, but calls `super.greet()` to reuse the base behavior. Code calling `person.greet()` gets the child method; this is polymorphism through method dispatch. `instanceof` checks the prototype chain, not the object's property values, so it is not a general way to validate JSON from a network request.
+
+**Common mistake:** Placing per-instance mutable data on a prototype shares that data among instances. Put arrays and state in the constructor or instance fields; put reusable methods on the prototype.
+
+**Try it:** Add a `role()` method to `AccountUser` returning `"member"`, override it in `Moderator` to return `"moderator"`, and call both through an array of users. Notice that the same method call chooses different implementations.
+
+## Constructor functions and new
+
+Before `class`, JavaScript programs often used constructor functions. Calling a function with `new` creates an object, links it to the constructor's `prototype`, calls the function with that new object as `this`, and returns the object unless the constructor explicitly returns another object. Class syntax uses this prototype-based model with clearer rules and a stricter body.
+
+```js
+function Device(name) {
+  this.name = name;
+}
+Device.prototype.describe = function () {
+  return `Device: ${this.name}`;
+};
+
+const radio = new Device("Radio");
+console.log(radio.describe());
+```
+
+Calling a constructor without `new` can write to the wrong receiver or fail. Classes cannot be called without `new`, which catches that error earlier. In modern code, use classes or factory functions; understand constructor functions to read older code and library implementations.
+
+## Inheritance trade-offs
+
+`extends` establishes a prototype link between the child class and parent class. `super(...)` calls the parent constructor and must run before the child uses `this`. An overridden method can call `super.method()` to reuse parent behavior. Methods are selected at runtime based on the actual object's prototype chain.
+
+Inheritance models a genuine *is-a* relationship and can become rigid when behavior combinations grow. Composition instead gives an object smaller capabilities or collaborators. Favor the simplest model that keeps behavior understandable; shared code alone is not always a reason to create a parent class.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

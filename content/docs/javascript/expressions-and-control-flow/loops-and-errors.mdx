@@ -1,0 +1,90 @@
+---
+title: Loops and Errors
+description: Iterate safely and report failures with Error objects.
+---
+
+Use `for...of` to visit values in an iterable such as an array or string. Use `for` when you need an index, and `while` when the stopping condition changes during the loop.
+
+```js
+const prices = [8, 12, 5];
+let total = 0;
+for (const price of prices) total += price;
+console.log(total); // 25
+
+for (let index = 0; index < prices.length; index += 1) {
+  console.log(index, prices[index]);
+}
+```
+
+`break` exits a loop; `continue` skips to the next iteration. `for...in` visits property keys, so it belongs with objects, not ordinary array iteration. A `while` loop must eventually change its condition or it may never stop.
+
+```js
+let attempts = 0;
+while (attempts < 3) {
+  attempts += 1;
+  if (attempts === 2) continue;
+  console.log(attempts); // 1, then 3
+}
+```
+
+The increment occurs **before** `continue`, so the loop still moves toward its stopping condition. `do...while` runs its body at least once, then tests the condition. An ordinary `while` may run zero times. Use `for...in` when you specifically need enumerable keys, but remember it can include inherited properties; `Object.keys()` or `Object.entries()` is often clearer for a plain record.
+
+## Fail clearly
+
+Throw an `Error` when a function cannot do what its contract promises. Catch it where the program can recover or show a useful message.
+
+```js
+function average(numbers) {
+  if (numbers.length === 0) throw new Error("Cannot average an empty list");
+  let sum = 0;
+  for (const number of numbers) sum += number;
+  return sum / numbers.length;
+}
+
+try {
+  console.log(average([]));
+} catch (error) {
+  console.error(error.message);
+}
+```
+
+`finally` runs after `try` or `catch`, even when an error occurs; use it for cleanup. Avoid catching an error just to return an unrelated default because it hides real failures. When catching unknown values, check `error instanceof Error` before reading `.message`.
+
+JavaScript has error subclasses for common categories. `TypeError` is appropriate when a value has the wrong type, and `RangeError` when a value is outside an allowed range. You can make your own error classes when callers need to distinguish a domain failure from an unexpected bug. Throwing strings is legal but loses the useful `Error` stack and conventional shape; prefer `throw new Error("message")`.
+
+Use `try/catch` around code that may throw **synchronously**, or around an `await` whose promise may reject. A `try/catch` around a call that *starts* an unawaited promise will not catch its later rejection. This difference is why async functions should return or await the promises they create.
+
+**Practice:** Modify `average()` to reject any value that is not a finite number. Test an empty array, valid numbers, and an array containing `"3"`.
+
+**Check:** Add `if (!Number.isFinite(number)) throw new TypeError("Expected a finite number");` inside the loop before adding. This rejects the string `"3"` instead of silently converting it.
+
+## Choose the loop that matches the job
+
+Use `for...of` to visit values in an iterable such as an array or string. Use a classic `for` loop when the index or iteration step is part of the task. `while` fits a loop that continues until a condition changes. `for...in` enumerates property keys and is usually for objects, not array values; inherited enumerable keys can make it unsuitable for array iteration.
+
+```js
+const colors = ["red", "blue"];
+for (const color of colors) console.log(color);
+
+for (let index = 0; index < colors.length; index += 1) {
+  console.log(index, colors[index]);
+}
+```
+
+`break` leaves the nearest loop, and `continue` skips to its next iteration. If a loop needs many flags and nested exits, extract one iteration into a function or use array methods such as `map`, `filter`, and `some` where they make the transformation clearer.
+
+## Design useful errors
+
+Throw an `Error` (or a more specific built-in error such as `TypeError` or `RangeError`) when a function cannot honor its contract. Include a message that says what was invalid. Catch errors where you can recover, add context, or translate them into an interface response. Catching an error only to log it and continue with invalid data hides the failure.
+
+```js
+function positiveQuantity(value) {
+  if (!Number.isInteger(value)) throw new TypeError("Quantity must be an integer");
+  if (value <= 0) throw new RangeError("Quantity must be greater than zero");
+  return value;
+}
+```
+
+Validate at system boundaries (form input, HTTP bodies, files), then let internal functions rely on clear contracts. This avoids repeating defensive checks at every line while still handling untrusted input.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

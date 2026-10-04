@@ -1,0 +1,85 @@
+---
+title: Operators and Decisions
+description: Arithmetic, comparisons, short-circuit logic, and branching.
+---
+
+An expression produces a value. Operators combine expressions. Arithmetic uses `+`, `-`, `*`, `/`, `%` (remainder), and `**` (power). Comparisons use `<`, `<=`, `>`, `>=`, `===`, and `!==`. Parentheses make precedence explicit.
+
+```js
+const subtotal = 40;
+const shipping = subtotal >= 50 ? 0 : 5;
+console.log(subtotal + shipping); // 45
+```
+
+The conditional operator `condition ? yes : no` is useful for a short choice. Use `if` when branches do more work:
+
+```js
+const score = 82;
+if (score >= 90) {
+  console.log("Excellent");
+} else if (score >= 60) {
+  console.log("Pass");
+} else {
+  console.log("Try again");
+}
+```
+
+The conditions are tested from top to bottom. For `score = 82`, `score >= 90` is false, then `score >= 60` is true, so the program prints `Pass` and skips the remaining branch. If the order were reversed, a score of 95 would match the broad `>= 60` case first and never reach `Excellent`. Order matters whenever ranges overlap.
+
+`&&` and `||` short-circuit: the right side is evaluated only if needed. They return an operand, not necessarily a boolean. `??` uses the right side only when the left is `null` or `undefined`, which is useful when `0` and `""` are valid values. Optional chaining, `?.`, stops property access when the value is nullish.
+
+```js
+const settings = { retries: 0 };
+console.log(settings.retries || 3); // 3 (often wrong)
+console.log(settings.retries ?? 3); // 0
+console.log(settings.user?.name ?? "Guest"); // Guest
+```
+
+For several fixed cases, `switch` is readable. Each case needs `break` unless falling through is intentional. Prefer `if` for ranges and complex conditions.
+
+```js
+const command = "save";
+switch (command) {
+  case "save":
+    console.log("Saving");
+    break;
+  case "delete":
+    console.log("Deleting");
+    break;
+  default:
+    console.log("Unknown command");
+}
+```
+
+`switch` uses strict matching, so the string `"1"` does not match the number `1`. Bitwise operators such as `&`, `|`, and `<<` work on integer bit patterns and are useful for flags or binary protocols; they are different from logical `&&` and `||`. Do not use bitwise tricks as a replacement for clear arithmetic in ordinary application code.
+
+**Practice:** Write `shippingCost(total, isMember)` that returns 0 for members or totals of at least 50, and 5 otherwise. Test the boundary at exactly 50.
+
+**Check:** A solution can use `if (isMember || total >= 50) return 0; return 5;`. Test `49`, `50`, and a member with `0` to confirm both parts of the condition.
+
+## Operator precedence
+
+Precedence determines which operation runs first. Multiplication runs before addition, and parentheses make a different grouping explicit:
+
+```js
+console.log(2 + 3 * 4); // 14
+console.log((2 + 3) * 4); // 20
+```
+
+When a condition has several `&&` and `||` operators, add parentheses to show the intended groups even when you know the precedence rules. It helps the next reader and reduces mistakes when the condition changes. `&&` and `||` short-circuit: they evaluate the right side only when needed, and return one of their operands rather than always returning a boolean.
+
+```js
+const user = null;
+const displayName = user && user.name; // null; does not read name
+const label = user?.name ?? "Guest"; // "Guest"
+```
+
+Optional chaining (`?.`) stops a property access when its left side is `null` or `undefined`. Nullish coalescing (`??`) supplies a fallback only for those two values, while `||` also replaces valid values such as `0` and `""`. Choose based on which values your data considers absent.
+
+## Conditional expressions
+
+Use `if...else` when branches contain several statements or when each branch deserves a clear block. The conditional operator (`condition ? a : b`) is an expression suited to a small choice that produces a value. Nested conditional operators are legal but quickly become hard to scan; prefer `if` or a lookup table for many cases.
+
+`switch` compares its case values strictly and runs from the matching case until `break`, `return`, or the end. Add `break` unless fall-through is intentional and documented. For a finite set of keys, an object or `Map` of handlers can sometimes be easier to extend than a long switch.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

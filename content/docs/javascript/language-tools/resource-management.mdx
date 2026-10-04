@@ -1,0 +1,54 @@
+---
+title: Resource Management
+description: Clean up files, locks, listeners, and other resources reliably.
+---
+
+Garbage collection reclaims unreachable memory, but it does not automatically decide when an open file, network connection, lock, or event listener should stop being used. A **resource** needs a deliberate lifetime. A reliable pattern is `try/finally`: the `finally` block runs whenever control leaves the `try` statement, including after normal completion, an exception, or a `return`.
+
+```js title="read-first-line.mjs"
+import { open } from "node:fs/promises";
+
+async function readFirstLine(path) {
+  const file = await open(path, "r");
+  try {
+    const text = await file.readFile("utf8");
+    return text.split("\n")[0];
+  } finally {
+    await file.close();
+  }
+}
+
+console.log(await readFirstLine("sample.txt"));
+```
+
+Create `sample.txt` beside the script and run `node read-first-line.mjs`. The file is closed even if reading or splitting throws. In a browser, the same idea applies to listeners and timers: register when a view starts, remove or clear them when it ends. An `AbortController` can help cancel a fetch or a listener registered with `{ signal }`.
+
+## Cleanup and lifetime
+
+Resources such as file handles, sockets, locks, and readers have a lifetime that should end even when work fails. `try...finally` is the portable pattern: acquire the resource, use it in `try`, and release it in `finally`. The cleanup block runs during normal completion and when an exception leaves the `try` block.
+
+Cleanup itself can fail. If both the main operation and cleanup throw, the cleanup error can replace the original error unless the code preserves both. In important resource code, decide how both failures should be reported and make cleanup idempotent where possible.
+
+Use the narrowest scope that contains the resource's work. This makes it clear when a file closes or a lock releases and reduces the chance that early returns or thrown errors leak resources.
+
+## Modern disposal syntax
+
+The language defines `using` and `await using`. `using` requires a synchronous `[Symbol.dispose]()` method. `await using` awaits `[Symbol.asyncDispose]()` and can fall back to synchronous `[Symbol.dispose]()` when the async method is absent. The matching cleanup runs automatically when the declaration's scope ends. For example:
+
+```js
+// Run only in a runtime that supports `using` syntax.
+{
+  using resource = {
+    [Symbol.dispose]() { console.log("closed"); },
+  };
+  console.log("working");
+} // working, then closed
+```
+
+Support varies by browser and runtime version. Check current compatibility data before using this syntax in production; an unsupported parser fails before the program runs. `try/finally` remains a portable alternative. `DisposableStack` and `AsyncDisposableStack` coordinate multiple disposables in runtimes that implement them.
+
+Disposal happens when a scope ends, not when the garbage collector runs. Avoid returning a callback that later tries to use a resource already disposed by its original scope.
+
+**Try it:** Change `readFirstLine()` to throw inside `try` and confirm, with a temporary log in `finally`, that cleanup still runs. Then remove the diagnostic log.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

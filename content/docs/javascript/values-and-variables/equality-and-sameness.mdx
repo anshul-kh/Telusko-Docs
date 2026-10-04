@@ -1,0 +1,68 @@
+---
+title: Equality and Sameness
+description: Compare primitives and objects without accidental type conversion.
+---
+
+JavaScript has several ways to compare values. Start with `===` for ordinary comparisons: it does not convert different types. `==` can convert operands before comparing and has special cases that are hard to remember, so use it only when you understand the exact rule you need.
+
+```js
+console.log(5 === "5"); // false
+console.log(5 == "5"); // true
+console.log(null === undefined); // false
+console.log(null == undefined); // true
+```
+
+Objects are compared by **identity**, not by whether their properties look the same. Two object literals create two different objects:
+
+```js
+const first = { id: 1 };
+const second = { id: 1 };
+const alias = first;
+console.log(first === second); // false
+console.log(first === alias); // true
+console.log(first.id === second.id); // true
+```
+
+If you need to compare records by value, compare the fields that define equality for your application. JSON-stringifying both objects is not a reliable general equality test: property order, unsupported values, and cycles complicate it.
+
+## NaN and signed zero
+
+`NaN` is unusual because it is not equal to itself. Use `Number.isNaN()` to detect it. `Object.is()` compares values using a slightly different definition of sameness: it treats `NaN` as the same as itself and distinguishes `+0` from `-0`.
+
+```js
+console.log(NaN === NaN); // false
+console.log(Object.is(NaN, NaN)); // true
+console.log(0 === -0); // true
+console.log(Object.is(0, -0)); // false
+```
+
+`Map` and `Set` use a comparison rule similar to `Object.is()` but treat positive and negative zero as the same key. This is why `new Set([NaN, NaN]).size` is 1. Ordinary application code rarely needs to distinguish signed zero; knowing it exists helps explain edge cases in numeric work.
+
+`Array.prototype.includes()` finds `NaN`, while `indexOf()` does not, because their comparison rules differ. Prefer `includes()` when asking whether an array contains a value.
+
+**Try it:** Predict the result of `[NaN].includes(NaN)`, `[NaN].indexOf(NaN)`, and `new Set([{ x: 1 }, { x: 1 }]).size`. Explain each result using the comparison model above.
+
+## Compare intentionally
+
+For everyday conditions, use `===` and `!==`. Loose equality has a few deliberate cases, such as `null == undefined`, but its broader coercion rules make a comparison's meaning harder to see. A reviewable condition should make conversion explicit:
+
+```js
+const input = "42";
+const parsed = Number(input);
+if (Number.isFinite(parsed) && parsed === 42) {
+  console.log("valid number");
+}
+```
+
+An object copied with the spread operator is a new, shallow object, so it is not strictly equal to the original. Nested references are still shared:
+
+```js
+const original = { settings: { theme: "dark" } };
+const copy = { ...original };
+console.log(copy === original); // false
+console.log(copy.settings === original.settings); // true
+```
+
+If two records represent the same real-world entity, compare a stable key such as `id`, not object identity. For exact structural equality, define which fields matter and how nested values should be compared; there is no universal built-in deep-equality operator.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

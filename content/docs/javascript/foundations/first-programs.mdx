@@ -1,0 +1,60 @@
+---
+title: Your First Programs
+description: Run JavaScript in a file and attach a script to a browser page.
+---
+
+Start with a program you can run repeatedly. In `javascript-practice`, create `hello.mjs`:
+
+```js title="hello.mjs"
+const name = "Shiva";
+console.log(`Hello, ${name}!`);
+```
+
+Run `node hello.mjs`. You should see `Hello, Shiva!`. `const` binds a name to a value. `console.log()` writes to the terminal. Backticks create a template literal, where `${name}` inserts the value of `name`. Semicolons usually mark the end of statements; use them consistently so automatic semicolon insertion does not surprise you.
+
+Read the first line as “make a binding called `name` whose current value is the string `Shiva`.” The quotation marks tell JavaScript it is text. Without them, `Shiva` would be treated as a variable name and, unless declared, would cause a `ReferenceError`. The second line passes one completed string to `console.log()`. The backticks are important: ordinary quotes do not interpolate `${name}`.
+
+Try changing only one thing at a time:
+
+```js
+console.log("Hello, ${name}!"); // prints the characters ${name}
+console.log(`Hello, ${name}!`); // inserts Shiva
+```
+
+Now create a web page in the same folder:
+
+```html title="index.html"
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Hello JavaScript</title></head>
+  <body>
+    <h1 id="message">Waiting...</h1>
+    <script src="./page.js" defer></script>
+  </body>
+</html>
+```
+
+```js title="page.js"
+const heading = document.querySelector("#message");
+heading.textContent = "Hello from the browser!";
+```
+
+Open `index.html` in the browser. The heading changes when the script runs. `defer` lets the HTML parser finish before the script executes, so the heading exists when `querySelector()` searches for it. `textContent` sets plain text.
+
+The browser first builds an HTML document containing an `<h1>` with the ID `message`. The script finds that element and changes its content. The two files are connected by the `<script src="./page.js">` path: `./` means “in the same folder as this HTML file.” This is a small example of JavaScript controlling the browser's DOM. It cannot change the file on disk; it changes the page currently in memory.
+
+If nothing happens, open developer tools and look for a red error. Check the filename, spelling of `message`, and whether the script path is relative to the HTML file. `document` is available here because the browser supplies it; running `page.js` with Node would fail.
+
+## Statements, expressions, and comments
+
+JavaScript normally evaluates statements in order. In `const first = 2; const second = 3; console.log(first + second);`, the first two statements create bindings, then the last reads both values and passes their sum to `console.log()`. A semicolon marks the end of a statement. JavaScript can insert some semicolons automatically, but writing them consistently avoids surprising cases around lines beginning with `(`, `[`, or a template string.
+
+An **expression** computes a value: `2 + 3`, `name.toUpperCase()`, or `isReady ? "Go" : "Wait"`. A **statement** performs an action such as declaring a binding, choosing a branch, or printing a value. This is why `console.log(2 + 3)` passes the number 5 to a function.
+
+Comments use `//` through the end of a line or `/* ... */` across lines. Comments should explain intent or a non-obvious decision, not narrate syntax that the code already makes clear. Remove temporary logging after it has helped diagnose a problem.
+
+**Practice:** Change the heading to a greeting of your own and add a second line to `hello.mjs` that prints `2 * 7`. Predict the output before running it.
+
+**Check:** `console.log(2 * 7)` prints `14`. If your browser still displays “Waiting...”, inspect the console: a failed script path or mismatched ID is more likely than a broken browser. Reload the page after editing `page.js` so the browser runs the new code.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

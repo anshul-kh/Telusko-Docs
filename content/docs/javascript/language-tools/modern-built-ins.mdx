@@ -1,0 +1,69 @@
+---
+title: Modern Built-ins
+description: Use newer collection, iterator, regex, and promise APIs with compatibility awareness.
+---
+
+Modern JavaScript adds convenience methods to familiar types. They do not change the foundations you learned earlier; they offer clearer names or avoid unnecessary mutation. When supporting older browsers or Node releases, check whether each method exists before depending on it, and use an appropriate build target or fallback.
+
+## Copying array operations
+
+`sort()` changes its array. `toSorted()` returns a new one. The related `toReversed()`, `toSpliced()`, and `with()` also return new arrays rather than changing the original. This is useful when state changes should be explicit.
+
+```js
+const scores = [30, 10, 20];
+const sorted = scores.toSorted((a, b) => a - b);
+const changed = scores.with(0, 40);
+console.log(scores); // [30, 10, 20]
+console.log(sorted); // [10, 20, 30]
+console.log(changed); // [40, 10, 20]
+```
+
+These methods make a shallow copy. If array elements are objects, the same element objects are still shared. `Object.groupBy(items, callback)` groups items under string or symbol keys; `Map.groupBy()` supports arbitrary key values. Grouping does not clone the grouped objects.
+
+```js
+const tasks = [{ done: true }, { done: false }, { done: true }];
+const groups = Object.groupBy(tasks, (task) => task.done ? "done" : "open");
+console.log(groups.done.length); // 2
+```
+
+## Set and iterator helpers
+
+Newer `Set` methods include `union()`, `intersection()`, `difference()`, and subset checks. They return a new set or a boolean, leaving the inputs unchanged. Iterator helpers such as `.map()`, `.filter()`, and `.take()` transform an iterator lazily rather than making an intermediate array. Array methods and iterator helpers look similar, but the iterator form is consumed as values are requested.
+
+```js
+const left = new Set([1, 2]);
+const right = new Set([2, 3]);
+console.log([...left.union(right)]); // [1, 2, 3]
+console.log([...left.intersection(right)]); // [2]
+```
+
+`Array.fromAsync(source)` collects an async iterable into an array, which is convenient when the result is reasonably small. It waits for values sequentially; it is not a parallel replacement for `Promise.all()`.
+
+## Other useful additions
+
+`RegExp.escape(text)` prepares literal text for use inside a dynamically built regular expression. Use it instead of hand-writing regex escaping. `Promise.withResolvers()` returns `{ promise, resolve, reject }`, which can simplify an API that must resolve a promise from a later callback. Most code should still consume promises returned by existing async APIs rather than create new promises manually.
+
+```js
+const literal = "a+b";
+const pattern = new RegExp(`^${RegExp.escape(literal)}$`);
+console.log(pattern.test("a+b")); // true
+console.log(pattern.test("aaab")); // false
+```
+
+Some of these APIs are recent enough that older runtime versions lack them. A missing method error is a compatibility issue, not a syntax lesson. See the linked MDN pages for [copying arrays](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/toSorted), [grouping](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/groupBy), [set operations](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/union), [async collection](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync), and [regex escaping](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp/escape).
+
+**Try it:** Compare `scores.sort((a, b) => a - b)` with `scores.toSorted((a, b) => a - b)`. Which one changes the input? Then group task objects by `done` and verify that changing an object through one group is visible in the original array.
+
+## Check runtime support
+
+The language and built-in APIs evolve over time, and users may run different browsers or Node versions. Before using a newer method, check the project's supported runtime matrix and feature compatibility. A syntax feature may need a transpiler, while a built-in API may need a polyfill; these are separate compatibility questions.
+
+Avoid detecting support by parsing a version string when a direct feature check is possible. For example, check whether `Array.prototype.toSorted` exists before calling it in a library that supports older browsers. A polyfill should match the expected behavior, not merely add a method with the same name.
+
+## Non-mutating methods still share nested data
+
+Methods such as `toSorted()`, `toReversed()`, `toSpliced()`, and `with()` return a new outer array instead of modifying the receiver. They are shallow: objects inside the result are the same object references as in the original array. Non-mutating outer structure is helpful for predictable state updates, but it is not a deep clone.
+
+Use newer built-ins because they express intent, not because immutability is automatically faster. For large data, measure realistic work and keep the caller's expected mutation contract clear.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

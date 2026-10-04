@@ -1,0 +1,49 @@
+---
+title: Introduction to JavaScript
+description: The language, its hosts, and where it fits in web and server development.
+---
+
+JavaScript is a programming language for describing operations on values. Its standard defines expressions, objects, functions, modules, promises, and built-in types. A **host** supplies the outside world: a browser supplies the document and user events; Node.js supplies files, processes, and servers. `document.querySelector()` is a browser API, while `node:fs` is a Node API. Neither is part of the language itself.
+
+The language is dynamically typed: values have types, but a variable may hold values of different types over time. Functions are values too; you can pass them as arguments or return them. Objects inherit behavior through prototypes, while `class` offers familiar syntax over that model. Asynchronous operations commonly return promises.
+
+```js
+const name = "Ada";
+const greet = (person) => `Hello, ${person}`;
+console.log(greet(name)); // Hello, Ada
+```
+
+This code runs in a browser console or Node.js. The `console` is supplied by those hosts. The template literal and arrow function are language features.
+
+## A useful mental model
+
+1. **ECMAScript** defines what JavaScript code means.
+2. **The engine** executes that code.
+3. **The host** offers APIs for input, output, timers, and network access.
+4. **Your application** combines language features with host APIs.
+
+JavaScript and Java are separate languages despite the similar names. You can learn JavaScript without knowing Java. Later chapters distinguish browser behavior from Node behavior whenever they differ.
+
+**Practice:** Change the string value assigned to `name` in the example and run it again. Call `greet()` with two different names, then identify which parts would still work in Node.js.
+
+For the full language reference, see the [MDN JavaScript Guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide) and the [ECMAScript specification](https://tc39.es/ecma262/).
+
+## What the runtime does
+
+An engine parses source code, checks its syntax, and executes it. Popular engines include V8, SpiderMonkey, and JavaScriptCore. A browser or Node.js embeds an engine and adds its own APIs. The same expression can therefore run in both places, while code that expects `document` only runs in a browser and code that imports `node:fs` only runs in Node.js.
+
+This distinction helps diagnose errors. A **syntax error** means the source cannot be parsed. A **runtime error** occurs while valid code runs, for example when it reads a property from `null`. A **logic error** is valid code that produces the wrong result. Check grammar for syntax errors, inspect values and stack traces for runtime errors, and compare actual output with intended behavior for logic errors.
+
+## Where JavaScript is used
+
+- **Browser interfaces:** DOM updates, forms, events, animation, and network requests.
+- **Servers and tools:** Node.js can read files, serve HTTP, run command-line programs, and automate tasks.
+- **Other hosts:** Desktop apps, embedded devices, and mobile frameworks can embed JavaScript engines and expose additional APIs.
+
+JavaScript does not provide every API in every host. Check runtime documentation when an example uses `fetch`, `process`, timers, or the DOM. Also distinguish the language from a framework: React, for example, is a library used to build interfaces, not another JavaScript syntax.
+
+When learning a feature, trace its input values, operation, result, and side effects. Change one input and predict the result before running it. This builds a mental model instead of memorizing one output.
+
+**Checkpoint:** Explain why this runs in Node while `document.querySelector("h1")` does not. Identify the language feature and host API in `const greet = (name) => "Hello, " + name;`.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>
