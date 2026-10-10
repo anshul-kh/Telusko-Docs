@@ -1,0 +1,11 @@
+{
+    "title": "Standard Library Essentials",
+    "pages": [
+        "strings-and-text-processing.mdx",
+        "strconv-and-parsing.mdx",
+        "time-and-durations.mdx",
+        "os-flags-and-environment.mdx",
+        "reading-and-writing-files.mdx",
+        "json-encoding-and-decoding.mdx"
+    ]
+}

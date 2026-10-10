@@ -1,0 +1,371 @@
+---
+title: Reading and Writing Files
+---
+
+Go's file handling is built on two interfaces, `io.Reader` and `io.Writer`, and almost everything else is a convenience on top of them. Learning the convenience functions first and the interfaces second is the usual path, so that is the order here.
+
+## The whole file at once
+
+```go
+data, err := os.ReadFile("config.yaml")
+if err != nil {
+    return fmt.Errorf("reading config: %w", err)
+}
+fmt.Println(string(data))
+```
+
+```go
+err := os.WriteFile("output.txt", []byte("hello"), 0o644)
+if err != nil {
+    return fmt.Errorf("writing output: %w", err)
+}
+```
+
+Two functions, no file handle to close, no buffering to think about. For configuration files, templates, and anything comfortably smaller than available memory, this is the right answer and reaching for anything else is premature.
+
+The `0o644` is the Unix permission mode: owner reads and writes, everyone else reads. The `0o` prefix is Go's octal literal syntax and makes the intent obvious. Common values:
+
+```text
+   0o644   rw-r--r--   ordinary files
+   0o600   rw-------   files containing secrets
+   0o755   rwxr-xr-x   directories and executables
+   0o700   rwx------   private directories
+```
+
+Permissions are ignored on Windows.
+
+## Streaming, for large files
+
+When a file might not fit in memory, open it and read as you go.
+
+```go
+f, err := os.Open("large.log")
+if err != nil {
+    return fmt.Errorf("opening log: %w", err)
+}
+defer f.Close()
+
+scanner := bufio.NewScanner(f)
+for scanner.Scan() {
+    line := scanner.Text()
+    process(line)
+}
+if err := scanner.Err(); err != nil {
+    return fmt.Errorf("reading log: %w", err)
+}
+```
+
+`bufio.Scanner` reads line by line with a buffer underneath, so a ten gigabyte file uses a few kilobytes of memory.
+
+<Callout type="warn">
+`Scanner` has a default maximum token size of 64 KB and returns `bufio.ErrTooLong` on a longer line. For files with very long lines, raise it:
+
+```go
+scanner := bufio.NewScanner(f)
+buf := make([]byte, 0, 1024*1024)
+scanner.Buffer(buf, 10*1024*1024)     // allow up to 10 MB per line
+```
+
+Forgetting the `scanner.Err()` check after the loop is the related mistake, because a too-long line then looks like a clean end of file.
+</Callout>
+
+Scanner can split on other boundaries:
+
+```go
+scanner.Split(bufio.ScanLines)     // default
+scanner.Split(bufio.ScanWords)
+scanner.Split(bufio.ScanRunes)
+scanner.Split(bufio.ScanBytes)
+```
+
+## Writing incrementally
+
+```go
+f, err := os.Create("report.txt")     // truncates if it exists
+if err != nil {
+    return err
+}
+defer f.Close()
+
+w := bufio.NewWriter(f)
+defer w.Flush()                       // without this, buffered data is lost
+
+for _, row := range rows {
+    fmt.Fprintf(w, "%s,%d\n", row.Name, row.Count)
+}
+```
+
+`bufio.Writer` batches small writes into larger ones, which is dramatically faster than a syscall per line. The `Flush` is not optional: anything still in the buffer when the program exits is simply gone.
+
+<Callout type="warn">
+`defer w.Flush()` discards the error it returns, and a failed flush means your data did not reach the disk. For anything that matters, flush and close explicitly:
+
+```go
+if err := w.Flush(); err != nil {
+    return fmt.Errorf("flushing: %w", err)
+}
+if err := f.Close(); err != nil {
+    return fmt.Errorf("closing: %w", err)
+}
+```
+</Callout>
+
+## Opening with specific behaviour
+
+```go
+os.Open(path)                    // read only
+os.Create(path)                  // create or truncate, mode 0666
+os.OpenFile(path, flags, mode)   // everything else
+```
+
+```go
+// Append to a log, creating it if needed
+f, err := os.OpenFile("app.log",
+    os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+
+// Fail if the file already exists, useful for lock files
+f, err := os.OpenFile("job.lock",
+    os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+if errors.Is(err, os.ErrExist) {
+    return errors.New("another instance is already running")
+}
+```
+
+The flags:
+
+```text
+   O_RDONLY   read only
+   O_WRONLY   write only
+   O_RDWR     both
+   O_APPEND   append to the end on every write
+   O_CREATE   create if it does not exist
+   O_EXCL     with O_CREATE, fail if it does exist
+   O_TRUNC    truncate to zero length when opening
+```
+
+## Checking for existence, and why you usually should not
+
+```go
+if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+    // file does not exist
+}
+```
+
+That works, and the better habit is to skip the check entirely:
+
+```go
+// Racy: the file may be deleted between the check and the open
+if fileExists(path) {
+    data, _ := os.ReadFile(path)
+}
+
+// Correct: try it, and handle the failure
+data, err := os.ReadFile(path)
+if errors.Is(err, os.ErrNotExist) {
+    return defaultConfig(), nil
+}
+if err != nil {
+    return nil, err
+}
+```
+
+The general principle is to attempt the operation rather than testing whether it will succeed, because the filesystem can change in between.
+
+## File metadata
+
+```go
+info, err := os.Stat(path)
+if err != nil {
+    return err
+}
+
+info.Name()        // base name
+info.Size()        // bytes
+info.Mode()        // permissions and type bits
+info.ModTime()     // last modification
+info.IsDir()
+```
+
+## Directories
+
+```go
+os.Mkdir("data", 0o755)              // one level, fails if the parent is missing
+os.MkdirAll("data/2026/08", 0o755)   // every level, no error if it exists
+
+entries, err := os.ReadDir("data")
+for _, e := range entries {
+    fmt.Println(e.Name(), e.IsDir())
+}
+
+os.Remove(path)                      // one file, or one empty directory
+os.RemoveAll(path)                   // recursive, be careful
+os.Rename(old, new)                  // also moves
+```
+
+`os.MkdirAll` returning nil when the directory already exists makes it safe to call unconditionally at startup.
+
+### Walking a tree
+
+```go
+err := filepath.WalkDir("./src", func(path string, d fs.DirEntry, err error) error {
+    if err != nil {
+        return err          // propagate, or return nil to skip and continue
+    }
+
+    if d.IsDir() {
+        if d.Name() == "node_modules" || d.Name() == ".git" {
+            return filepath.SkipDir      // do not descend into it
+        }
+        return nil
+    }
+
+    if filepath.Ext(path) == ".go" {
+        fmt.Println(path)
+    }
+    return nil
+})
+```
+
+`filepath.SkipDir` is the mechanism for pruning, and it is much faster than walking a large tree and filtering afterwards.
+
+## Path handling
+
+```go
+import "path/filepath"
+
+filepath.Join("data", "2026", "file.txt")     // uses the OS separator
+filepath.Base("/a/b/c.txt")                   // "c.txt"
+filepath.Dir("/a/b/c.txt")                    // "/a/b"
+filepath.Ext("c.txt")                         // ".txt"
+filepath.Abs("./data")                        // absolute path
+filepath.Clean("a/b/../c")                    // "a/c"
+```
+
+Always use `filepath.Join` rather than concatenating with `/`. It produces backslashes on Windows and collapses duplicate separators.
+
+<Callout type="warn">
+Joining user-supplied input into a path is a directory traversal vulnerability. `filepath.Join("uploads", "../../etc/passwd")` escapes the directory you intended.
+
+```go
+func safePath(base, name string) (string, error) {
+    p := filepath.Join(base, filepath.Clean("/"+name))
+    if !strings.HasPrefix(p, filepath.Clean(base)+string(os.PathSeparator)) {
+        return "", errors.New("invalid path")
+    }
+    return p, nil
+}
+```
+
+Go 1.24 added `os.Root` which enforces this at the OS level and is the better option when available.
+</Callout>
+
+## Atomic writes
+
+Writing directly to a file leaves it corrupted if the program dies partway through. Write to a temporary file and rename, which is atomic on every major filesystem:
+
+```go
+func writeAtomic(path string, data []byte, perm os.FileMode) error {
+    dir := filepath.Dir(path)
+
+    tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp")
+    if err != nil {
+        return fmt.Errorf("creating temp file: %w", err)
+    }
+    tmpName := tmp.Name()
+    defer os.Remove(tmpName)          // cleanup if anything below fails
+
+    if _, err := tmp.Write(data); err != nil {
+        tmp.Close()
+        return fmt.Errorf("writing temp file: %w", err)
+    }
+    if err := tmp.Sync(); err != nil {  // force to disk before renaming
+        tmp.Close()
+        return fmt.Errorf("syncing: %w", err)
+    }
+    if err := tmp.Close(); err != nil {
+        return fmt.Errorf("closing temp file: %w", err)
+    }
+    if err := os.Chmod(tmpName, perm); err != nil {
+        return fmt.Errorf("setting permissions: %w", err)
+    }
+
+    return os.Rename(tmpName, path)
+}
+```
+
+Readers see either the old file or the new one, never a half-written mixture. The temporary file must be in the same directory as the target, because rename across filesystems is not atomic.
+
+## The io interfaces
+
+Once you see these, a lot of the standard library clicks into place.
+
+```go
+type Reader interface { Read(p []byte) (n int, err error) }
+type Writer interface { Write(p []byte) (n int, err error) }
+```
+
+A file is both. So is a network connection, an HTTP body, a `bytes.Buffer`, a `strings.Reader`, a gzip stream, and a hash. Which means this one function works between any of them:
+
+```go
+io.Copy(dst, src)
+```
+
+```go
+// Download a file, without loading it into memory
+resp, _ := http.Get(url)
+defer resp.Body.Close()
+
+out, _ := os.Create("download.bin")
+defer out.Close()
+
+n, err := io.Copy(out, resp.Body)
+```
+
+```go
+// Hash a file while writing it, in one pass
+h := sha256.New()
+tee := io.TeeReader(src, h)          // reads pass through the hash
+io.Copy(dst, tee)
+fmt.Printf("%x\n", h.Sum(nil))
+```
+
+```go
+// Write to two places at once
+w := io.MultiWriter(file, os.Stdout)
+fmt.Fprintln(w, "goes to both")
+```
+
+```go
+// Limit how much you will read, to prevent a memory exhaustion attack
+body := io.LimitReader(resp.Body, 10<<20)     // 10 MB maximum
+data, err := io.ReadAll(body)
+```
+
+That last one belongs in every HTTP handler that reads a request body. Without a limit, a client can send an unbounded stream and exhaust your memory.
+
+## Embedding files in the binary
+
+```go
+import _ "embed"
+
+//go:embed templates/index.html
+var indexHTML string
+
+//go:embed static/*
+var staticFiles embed.FS
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+```
+
+```go
+func main() {
+    http.Handle("/static/", http.FileServer(http.FS(staticFiles)))
+}
+```
+
+The files become part of the compiled binary, so deployment stays a single file copy. This is one of the more useful features Go has added, and it fits the single-binary deployment story perfectly.
+
+Rules: the `//go:embed` comment must be directly above the variable, the paths are relative to the source file, and you cannot embed files outside the package directory or anything starting with `.` or `_` unless you use the `all:` prefix.
+
+Next, let's cover JSON, which is how most of these bytes end up being structured.

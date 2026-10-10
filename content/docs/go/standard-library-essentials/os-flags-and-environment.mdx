@@ -1,0 +1,380 @@
+---
+title: OS, Flags and Environment
+---
+
+A program that only ever does the same thing is not much of a program. This page covers the three channels through which the outside world tells a Go binary what to do: command line arguments, environment variables, and signals from the operating system.
+
+## Command line arguments, the raw way
+
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    fmt.Println(os.Args)        // [/tmp/prog serve --port 8080]
+    fmt.Println(os.Args[0])     // the program path
+    fmt.Println(os.Args[1:])    // the actual arguments
+}
+```
+
+`os.Args` is a plain `[]string`. Position zero is how the program was invoked, and the real arguments start at one. For a tool taking one filename this is all you need:
+
+```go
+func main() {
+    if len(os.Args) != 2 {
+        fmt.Fprintln(os.Stderr, "usage: wc <file>")
+        os.Exit(2)
+    }
+    count(os.Args[1])
+}
+```
+
+Note `os.Stderr` for the usage message and exit code 2, which is the convention for a usage error. Exit code 1 means the program ran and failed, 2 means it was invoked incorrectly.
+
+## The flag package
+
+For anything with options, `flag` handles parsing, defaults, types, and help output.
+
+```go
+package main
+
+import (
+    "flag"
+    "fmt"
+    "time"
+)
+
+func main() {
+    port := flag.Int("port", 8080, "port to listen on")
+    host := flag.String("host", "localhost", "host to bind")
+    debug := flag.Bool("debug", false, "enable debug logging")
+    timeout := flag.Duration("timeout", 30*time.Second, "request timeout")
+
+    flag.Parse()
+
+    fmt.Printf("listening on %s:%d (debug=%v, timeout=%v)\n",
+        *host, *port, *debug, *timeout)
+
+    fmt.Println("remaining arguments:", flag.Args())
+}
+```
+
+```bash
+./server -port 9000 -debug
+./server --port=9000 --debug=true
+./server -h
+```
+
+```text
+Usage of ./server:
+  -debug
+        enable debug logging
+  -host string
+        host to bind (default "localhost")
+  -port int
+        port to listen on (default 8080)
+  -timeout duration
+        request timeout (default 30s)
+```
+
+The help output is generated from the definitions, so it cannot drift out of date.
+
+Single and double dashes are equivalent in Go's `flag` package, which differs from most Unix conventions. There is also no support for combined short flags such as `-abc`, and no `--flag value` for booleans, which must be `--flag=value`.
+
+### Binding to variables
+
+The pointer form gets noisy. Binding to existing variables reads better, especially into a config struct:
+
+```go
+type Config struct {
+    Port    int
+    Host    string
+    Debug   bool
+    Timeout time.Duration
+}
+
+func parseFlags() *Config {
+    cfg := &Config{}
+
+    flag.IntVar(&cfg.Port, "port", 8080, "port to listen on")
+    flag.StringVar(&cfg.Host, "host", "localhost", "host to bind")
+    flag.BoolVar(&cfg.Debug, "debug", false, "enable debug logging")
+    flag.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "request timeout")
+
+    flag.Parse()
+    return cfg
+}
+```
+
+### Subcommands
+
+`flag.NewFlagSet` gives each subcommand its own set:
+
+```go
+func main() {
+    if len(os.Args) < 2 {
+        usage()
+    }
+
+    switch os.Args[1] {
+    case "serve":
+        fs := flag.NewFlagSet("serve", flag.ExitOnError)
+        port := fs.Int("port", 8080, "port to listen on")
+        fs.Parse(os.Args[2:])
+        serve(*port)
+
+    case "migrate":
+        fs := flag.NewFlagSet("migrate", flag.ExitOnError)
+        steps := fs.Int("steps", 0, "number of migrations, 0 for all")
+        fs.Parse(os.Args[2:])
+        migrate(*steps)
+
+    default:
+        usage()
+    }
+}
+```
+
+For anything more elaborate than a few subcommands, `github.com/spf13/cobra` is the standard choice and handles nested commands, completion, and generated documentation.
+
+## Environment variables
+
+```go
+os.Getenv("DATABASE_URL")              // "" if unset, no way to tell them apart
+os.LookupEnv("DATABASE_URL")           // value, ok
+os.Setenv("APP_ENV", "production")
+os.Unsetenv("TEMP_TOKEN")
+os.Environ()                           // []string of "KEY=value"
+```
+
+`LookupEnv` is the one to use when empty and unset mean different things:
+
+```go
+v, ok := os.LookupEnv("FEATURE_FLAG")
+if !ok {
+    // not set at all
+}
+```
+
+A small helper set removes most of the repetition:
+
+```go
+func env(key, def string) string {
+    if v, ok := os.LookupEnv(key); ok && v != "" {
+        return v
+    }
+    return def
+}
+
+func envInt(key string, def int) int {
+    v, ok := os.LookupEnv(key)
+    if !ok {
+        return def
+    }
+    n, err := strconv.Atoi(v)
+    if err != nil {
+        return def
+    }
+    return n
+}
+
+func envRequired(key string) (string, error) {
+    v, ok := os.LookupEnv(key)
+    if !ok || v == "" {
+        return "", fmt.Errorf("%s is required", key)
+    }
+    return v, nil
+}
+```
+
+<Callout type="warn">
+Never log the full environment. `os.Environ()` contains database passwords, API keys, and tokens, and a debug log that dumps it will end up in a log aggregator that many more people can read. Log the specific settings you care about, and never the secrets.
+</Callout>
+
+The convention is that flags override environment variables, which override defaults:
+
+```text
+   defaults  <  environment  <  flags
+```
+
+Environment for deployment configuration, flags for per-invocation overrides.
+
+## Signals and graceful shutdown
+
+An operating system tells a process to stop by sending a signal. Handling that properly is what separates a service that drains cleanly from one that drops requests.
+
+```go
+import (
+    "os/signal"
+    "syscall"
+)
+
+func main() {
+    ctx, stop := signal.NotifyContext(context.Background(),
+        os.Interrupt, syscall.SIGTERM)
+    defer stop()
+
+    srv := &http.Server{Addr: ":8080", Handler: routes()}
+
+    go func() {
+        if err := srv.ListenAndServe(); err != nil &&
+            !errors.Is(err, http.ErrServerClosed) {
+            slog.Error("server failed", "error", err)
+            os.Exit(1)
+        }
+    }()
+
+    slog.Info("server started", "addr", srv.Addr)
+
+    <-ctx.Done()          // wait for SIGINT or SIGTERM
+    slog.Info("shutting down")
+
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    if err := srv.Shutdown(shutdownCtx); err != nil {
+        slog.Error("forced shutdown", "error", err)
+    }
+    slog.Info("stopped cleanly")
+}
+```
+
+`signal.NotifyContext`, added in Go 1.16, turns a signal into a cancelled context, which composes with everything else that takes a context.
+
+The two signals that matter:
+
+```text
+   SIGINT   Ctrl+C in a terminal
+   SIGTERM  what Docker, Kubernetes, and systemd send to stop a process
+   SIGKILL  cannot be caught, the process dies immediately
+```
+
+Kubernetes sends SIGTERM, waits for the termination grace period, then sends SIGKILL. Handling SIGTERM and finishing in-flight requests inside that window is what makes a rolling deployment invisible to users.
+
+## Exit codes
+
+```go
+os.Exit(0)      // success
+os.Exit(1)      // general failure
+os.Exit(2)      // usage error, by convention
+```
+
+<Callout type="warn">
+`os.Exit` terminates immediately and **skips every deferred call**. Files stay unflushed, connections stay open, and cleanup does not happen. Restrict it to the very top of `main`, and structure the program so real work happens in a function that returns an error:
+
+```go
+func main() {
+    if err := run(); err != nil {
+        fmt.Fprintln(os.Stderr, "error:", err)
+        os.Exit(1)
+    }
+}
+
+func run() error {
+    db, err := openDatabase()
+    if err != nil {
+        return err
+    }
+    defer db.Close()      // this actually runs
+    // ...
+    return nil
+}
+```
+
+`log.Fatal` calls `os.Exit(1)` internally, so it has the same problem. It belongs in `main` and nowhere else.
+</Callout>
+
+## Standard input and output
+
+```go
+fmt.Println("to stdout")
+fmt.Fprintln(os.Stderr, "to stderr")
+
+// Read all of stdin
+data, err := io.ReadAll(os.Stdin)
+
+// Read line by line, which is what you usually want
+scanner := bufio.NewScanner(os.Stdin)
+for scanner.Scan() {
+    line := scanner.Text()
+    process(line)
+}
+if err := scanner.Err(); err != nil {
+    return fmt.Errorf("reading stdin: %w", err)
+}
+```
+
+Checking `scanner.Err()` after the loop matters. The loop ends on both end of input and error, and without the check a read failure looks like a clean finish.
+
+Detecting whether input is piped:
+
+```go
+stat, _ := os.Stdin.Stat()
+if (stat.Mode() & os.ModeCharDevice) == 0 {
+    // input is piped or redirected
+} else {
+    // running interactively in a terminal
+}
+```
+
+That check is how well behaved CLI tools decide whether to print colour or show a progress bar.
+
+## Running other programs
+
+```go
+import "os/exec"
+
+out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+if err != nil {
+    return fmt.Errorf("getting git revision: %w", err)
+}
+rev := strings.TrimSpace(string(out))
+```
+
+With a context, so it can be cancelled or time out:
+
+```go
+ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+defer cancel()
+
+cmd := exec.CommandContext(ctx, "ffmpeg", "-i", input, output)
+cmd.Stdout = os.Stdout
+cmd.Stderr = os.Stderr
+
+if err := cmd.Run(); err != nil {
+    var exitErr *exec.ExitError
+    if errors.As(err, &exitErr) {
+        return fmt.Errorf("ffmpeg exited with %d: %s",
+            exitErr.ExitCode(), exitErr.Stderr)
+    }
+    return fmt.Errorf("running ffmpeg: %w", err)
+}
+```
+
+<Callout type="warn">
+`exec.Command` takes the program and its arguments separately, and does not invoke a shell. That means user input passed as an argument cannot inject a command, which is a real security advantage over shelling out to `sh -c`. Never build a command string and pass it to a shell when the input is not entirely under your control.
+</Callout>
+
+## Process and system information
+
+```go
+os.Getpid()
+os.Getwd()                    // current directory
+os.Hostname()
+os.UserHomeDir()
+os.TempDir()
+
+runtime.NumCPU()
+runtime.NumGoroutine()
+runtime.GOOS                  // "linux", "darwin", "windows"
+runtime.GOARCH                // "amd64", "arm64"
+runtime.Version()             // "go1.24.0"
+```
+
+`runtime.GOOS` is how you branch on platform at runtime. For code that must differ entirely per platform, build tags and files named `thing_linux.go` and `thing_windows.go` are the better mechanism.
+
+Next, let's look at reading and writing the files these programs operate on.

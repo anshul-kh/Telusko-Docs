@@ -1,0 +1,13 @@
+{
+    "title": "Concurrency",
+    "pages": [
+        "goroutines.mdx",
+        "channels.mdx",
+        "buffered-channels-and-directions.mdx",
+        "the-select-statement.mdx",
+        "waitgroups-and-mutexes.mdx",
+        "worker-pools.mdx",
+        "context-for-cancellation.mdx",
+        "race-conditions-and-the-race-detector.mdx"
+    ]
+}

@@ -1,0 +1,288 @@
+---
+title: Goroutines
+---
+
+```go
+go doWork()
+```
+
+Two characters, and you have started something that runs independently. That brevity is the point. In most languages, running work concurrently means a thread pool, an executor, an async runtime, or a callback. In Go it is a keyword, and the cost is low enough that you can use it casually.
+
+## Concurrency is not parallelism
+
+Worth settling before anything else, because the words get used interchangeably and Go's design depends on the distinction.
+
+```text
+   Concurrency: dealing with many things at once
+                a structure for a program
+
+   Parallelism: doing many things at once
+                a property of the hardware
+```
+
+A single core machine can run a highly concurrent Go program. The goroutines interleave rather than truly overlapping, and the program is still correctly structured for the work. Add cores and the same program gets parallelism for free.
+
+Rob Pike put it as "concurrency is about structure, parallelism is about execution", and Go gives you the structure.
+
+## Starting one
+
+```go
+func main() {
+    go fmt.Println("from a goroutine")
+    fmt.Println("from main")
+
+    time.Sleep(100 * time.Millisecond)
+}
+```
+
+```text
+from main
+from a goroutine
+```
+
+Or possibly the other order. There is no guarantee about scheduling, and code that depends on one is broken even if it passes today.
+
+That `time.Sleep` is doing something important and doing it badly. **When `main` returns, the program exits and every running goroutine is killed instantly.** Without the sleep, the goroutine never gets a chance to run.
+
+```go
+func main() {
+    go fmt.Println("never printed")
+    // main returns immediately, program exits
+}
+```
+
+Sleeping is not the fix. It is the placeholder used in examples before `sync.WaitGroup` and channels are introduced, both of which appear shortly.
+
+## What a goroutine costs
+
+```text
+                    OS thread          Goroutine
+   ────────────     ─────────          ─────────
+   Initial stack    ~1 MB, fixed       ~2 KB, grows on demand
+   Created by       the kernel         the Go runtime
+   Switch cost      kernel context     user space, much cheaper
+                    switch
+   Practical max    thousands          hundreds of thousands
+```
+
+A program running a hundred thousand goroutines is unremarkable in Go:
+
+```go
+func main() {
+    var wg sync.WaitGroup
+
+    for i := 0; i < 100_000; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            time.Sleep(time.Second)
+        }()
+    }
+
+    wg.Wait()      // finishes in about a second, using a few hundred MB
+}
+```
+
+The same code with OS threads would need a hundred gigabytes of stack and would not start.
+
+## How the scheduler works
+
+Go multiplexes goroutines onto a small number of OS threads. The model has three parts:
+
+```text
+   G  goroutine     your function, plus its stack and state
+   M  machine       an OS thread
+   P  processor     a scheduling context, one per usable CPU core
+
+   Each P has a queue of Gs. An M grabs a P and runs its Gs.
+   When a G blocks on I/O, the M hands the P to another M and the
+   remaining Gs keep running.
+```
+
+That last sentence is the whole trick. When a goroutine blocks on a network read, the thread is not blocked with it. The scheduler parks the goroutine, picks another one, and keeps the thread busy. You write sequential code and get asynchronous behaviour.
+
+```bash
+GOMAXPROCS=4 go run main.go        # limit to 4 Ps
+```
+
+```go
+runtime.GOMAXPROCS(0)      // read the current value
+runtime.NumCPU()           // how many cores the machine has
+runtime.NumGoroutine()     // how many are alive right now
+```
+
+`GOMAXPROCS` defaults to the number of cores and you should essentially never change it. The exception is a container with a CPU limit, where the Go runtime sees the host's core count rather than the limit. `go.uber.org/automaxprocs` fixes that, and Go 1.25 handles it natively.
+
+## Goroutines and closures
+
+Because a goroutine runs a function, closures are the usual way to give it work:
+
+```go
+for _, url := range urls {
+    go func() {
+        resp, err := http.Get(url)
+        // ...
+    }()
+}
+```
+
+<Callout type="info">
+Before Go 1.22 this was the most famous bug in the language, because the loop variable was shared across iterations and every goroutine saw the last URL. Go 1.22 gives each iteration its own variable, so modules declaring `go 1.22` or later are safe. If you see `url := url` at the top of a loop body in older code, that is the workaround, and it is no longer needed.
+</Callout>
+
+Passing the value as an argument also works and is explicit either way:
+
+```go
+for _, url := range urls {
+    go func(u string) {
+        resp, err := http.Get(u)
+    }(url)
+}
+```
+
+## Goroutines and panics
+
+A panic in a goroutine takes down the whole program, and it cannot be recovered from outside:
+
+```go
+func main() {
+    defer func() {
+        recover()          // does not catch the goroutine's panic
+    }()
+
+    go func() {
+        panic("boom")
+    }()
+
+    time.Sleep(time.Second)
+}
+```
+
+```text
+panic: boom
+exit status 2
+```
+
+Every goroutine handling data you do not control needs its own recovery:
+
+```go
+func safeGo(name string, fn func()) {
+    go func() {
+        defer func() {
+            if r := recover(); r != nil {
+                slog.Error("goroutine panicked",
+                    "goroutine", name,
+                    "panic", r,
+                    "stack", string(debug.Stack()),
+                )
+            }
+        }()
+        fn()
+    }()
+}
+```
+
+## Goroutine leaks
+
+A goroutine that blocks forever is never collected. It holds its stack, anything it references, and any resource it opened, for the life of the process.
+
+```go
+func leak() {
+    ch := make(chan int)
+
+    go func() {
+        val := <-ch          // blocks forever, nobody ever sends
+        fmt.Println(val)
+    }()
+
+    // function returns, the goroutine is stuck
+}
+```
+
+Call that in a request handler and every request leaks one goroutine. The process grows until it is killed.
+
+The three common causes:
+
+```go
+// 1. Sending to a channel nobody reads
+go func() {
+    results <- compute()      // blocks if the receiver already gave up
+}()
+
+// 2. Receiving from a channel nobody closes
+for v := range ch {           // blocks forever if ch is never closed
+    process(v)
+}
+
+// 3. Waiting on something with no timeout
+go func() {
+    <-someCondition           // may never fire
+}()
+```
+
+Every one of them is fixed by the same principle: **a goroutine must have a guaranteed way to exit.** Usually that means a `context`, a `select` with a done channel, or a buffered channel so the send cannot block.
+
+```go
+func noLeak(ctx context.Context) {
+    ch := make(chan int, 1)      // buffered, so the send never blocks
+
+    go func() {
+        ch <- compute()
+    }()
+
+    select {
+    case v := <-ch:
+        fmt.Println(v)
+    case <-ctx.Done():
+        return                   // the goroutine still completes and exits
+    }
+}
+```
+
+Watch for leaks in development:
+
+```go
+fmt.Println(runtime.NumGoroutine())
+```
+
+If that number grows steadily under steady load, you have a leak. `net/http/pprof` gives you the stack of every live goroutine, which usually identifies the culprit in seconds.
+
+<Callout type="warn">
+The rule that prevents most leaks: **when you start a goroutine, know how it ends.** If you cannot answer that question while writing the `go` statement, the design is not finished yet.
+</Callout>
+
+## Goroutines are not free of ordering surprises
+
+```go
+var ready bool
+var data string
+
+go func() {
+    data = "loaded"
+    ready = true
+}()
+
+for !ready {           // may loop forever
+}
+fmt.Println(data)
+```
+
+Without synchronisation, there is no guarantee that the main goroutine ever observes `ready` becoming true, and no guarantee that it sees `data` even if it does. The compiler and the CPU are both free to reorder operations that have no synchronisation between them.
+
+This is not a theoretical concern. Code like this fails on real hardware. Channels, mutexes, and the `sync/atomic` package all establish the ordering guarantees that make cross-goroutine communication correct, and the rest of this section covers them.
+
+## When to reach for a goroutine
+
+```text
+   Independent I/O that can overlap        →  yes
+   Handling many connections               →  yes, one per connection
+   Background work while responding        →  yes, carefully
+   Fan-out over a list of tasks            →  yes, with a worker pool
+   CPU-bound work on multiple cores        →  yes, up to GOMAXPROCS
+   Speeding up a fast sequential loop      →  usually not, the overhead wins
+   Anything without a defined exit         →  no, fix the design first
+```
+
+Starting a goroutine costs roughly a microsecond and a couple of kilobytes. Cheap, but not free. Spawning one per element of a million element slice to add numbers will be slower than the loop.
+
+Next, let's look at how goroutines talk to each other, which is where Go's design really diverges from everyone else's.

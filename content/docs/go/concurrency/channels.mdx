@@ -1,0 +1,330 @@
+---
+title: Channels
+---
+
+<Quote>
+Do not communicate by sharing memory; instead, share memory by communicating.
+</Quote>
+
+That sentence is the most quoted thing in Go, and channels are what it means in practice. Instead of two goroutines both reaching into the same variable behind a lock, one goroutine sends a value and the other receives it. Ownership transfers with the value, so there is nothing to protect.
+
+## The basics
+
+```go
+ch := make(chan int)      // a channel carrying ints
+
+ch <- 42                  // send
+value := <-ch             // receive
+close(ch)                 // close
+```
+
+The arrow always points in the direction the data moves, which makes the syntax easy to read once you notice it.
+
+```go
+func main() {
+    ch := make(chan string)
+
+    go func() {
+        ch <- "hello from the goroutine"
+    }()
+
+    msg := <-ch               // blocks until the goroutine sends
+    fmt.Println(msg)
+}
+```
+
+No `time.Sleep` this time. The receive blocks until a value arrives, which is both the synchronisation and the communication.
+
+## Unbuffered channels are a rendezvous
+
+An unbuffered channel has no storage. A send blocks until a receiver is ready, and a receive blocks until a sender is ready. They meet.
+
+```text
+   goroutine A            goroutine B
+   ───────────            ───────────
+   ch <- 42
+   (blocked, waiting)
+                          v := <-ch
+   (both proceed)         (both proceed)
+```
+
+This gives you a guarantee that is easy to overlook: when a send on an unbuffered channel completes, you know the receiver has the value. That makes unbuffered channels a synchronisation tool, not just a queue.
+
+```go
+done := make(chan struct{})
+
+go func() {
+    doWork()
+    close(done)          // signal completion
+}()
+
+<-done                   // wait for it
+```
+
+`chan struct{}` carries no data and says so. Only the event matters.
+
+## Deadlock
+
+Every channel operation can block, and blocking with nobody to unblock you is a deadlock. Go detects the case where **every** goroutine is stuck and crashes with a clear message:
+
+```go
+func main() {
+    ch := make(chan int)
+    ch <- 42               // nobody is receiving
+    fmt.Println(<-ch)
+}
+```
+
+```text
+fatal error: all goroutines are asleep - deadlock!
+```
+
+The detector only fires when the whole program is stuck. If one goroutine is blocked forever while others keep working, you get a leak instead of a crash, which is harder to notice.
+
+The three classic deadlocks:
+
+```go
+// 1. Sending on an unbuffered channel with no receiver
+ch := make(chan int)
+ch <- 1
+
+// 2. Receiving with no sender
+ch := make(chan int)
+<-ch
+
+// 3. Ranging over a channel that is never closed
+for v := range ch {        // waits forever after the last send
+    fmt.Println(v)
+}
+```
+
+## Closing
+
+`close` says no more values will ever be sent.
+
+```go
+ch := make(chan int, 3)
+ch <- 1
+ch <- 2
+close(ch)
+
+fmt.Println(<-ch)     // 1
+fmt.Println(<-ch)     // 2
+fmt.Println(<-ch)     // 0, the zero value, channel is closed and drained
+```
+
+Receiving from a closed channel returns the zero value immediately, forever. To distinguish that from a real zero, use the comma ok form:
+
+```go
+v, ok := <-ch
+if !ok {
+    fmt.Println("channel is closed")
+}
+```
+
+### The rules of closing
+
+```text
+   Only the sender closes.    A receiver closing causes a panic on the next send.
+   Close once.                Closing a closed channel panics.
+   Never send after close.    Sending on a closed channel panics.
+   Closing is optional.       An unclosed channel is garbage collected normally.
+```
+
+That last one surprises people. You do not need to close every channel. Close when receivers need to know the stream has ended, which usually means when someone is ranging over it.
+
+<Callout type="warn">
+The panics from closing are not recoverable in any useful way, so the design has to prevent them. With one sender it is simple: that sender closes. With several senders, use a `sync.WaitGroup` and have a separate goroutine close after all senders finish, which the worker pools page shows.
+</Callout>
+
+## Ranging over a channel
+
+```go
+func produce(ch chan<- int) {
+    for i := 1; i <= 5; i++ {
+        ch <- i * i
+    }
+    close(ch)          // without this, the range below blocks forever
+}
+
+func main() {
+    ch := make(chan int)
+    go produce(ch)
+
+    for v := range ch {
+        fmt.Println(v)
+    }
+    fmt.Println("done")
+}
+```
+
+`range` receives until the channel is closed and drained, then exits. It is the cleanest way to consume a stream, and it is the main reason to close a channel at all.
+
+## The nil channel
+
+A channel that has not been created is nil, and every operation on it blocks forever:
+
+```go
+var ch chan int         // nil
+
+ch <- 1                 // blocks forever
+<-ch                    // blocks forever
+close(ch)               // panics
+```
+
+This sounds purely like a bug, and it is one, except in `select`, where a nil case is simply never chosen. That turns out to be a genuinely useful technique for disabling a branch, and the `select` page shows it.
+
+## Channels are typed and first class
+
+```go
+chan int
+chan string
+chan []byte
+chan *Order
+chan error
+chan chan int          // a channel of channels, occasionally useful
+chan struct{}          // signalling only
+```
+
+A channel is a value, so it can be passed to functions, stored in a struct, and returned. Returning a channel is a common way for a function to hand back a stream of results:
+
+```go
+func generate(ctx context.Context, n int) <-chan int {
+    out := make(chan int)
+
+    go func() {
+        defer close(out)
+        for i := 0; i < n; i++ {
+            select {
+            case out <- i:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+
+    return out
+}
+```
+
+Note the return type `<-chan int`, which is a receive-only channel. The caller can read from it and cannot send or close, which the compiler enforces. Directional channels get their own section on the next page.
+
+## Common patterns
+
+### Signalling completion
+
+```go
+done := make(chan struct{})
+
+go func() {
+    defer close(done)
+    doWork()
+}()
+
+<-done
+```
+
+Closing rather than sending means any number of waiters can observe it, since a closed channel unblocks every receiver.
+
+### Returning a result
+
+```go
+func fetchAsync(url string) <-chan Result {
+    ch := make(chan Result, 1)      // buffered so the goroutine never blocks
+
+    go func() {
+        body, err := fetch(url)
+        ch <- Result{Body: body, Err: err}
+    }()
+
+    return ch
+}
+
+result := <-fetchAsync(url)
+```
+
+The buffer of one matters. If the caller abandons the result, an unbuffered send would block that goroutine forever.
+
+### Fan-in
+
+Merging several channels into one:
+
+```go
+func merge(chans ...<-chan int) <-chan int {
+    out := make(chan int)
+    var wg sync.WaitGroup
+
+    for _, c := range chans {
+        wg.Add(1)
+        go func(c <-chan int) {
+            defer wg.Done()
+            for v := range c {
+                out <- v
+            }
+        }(c)
+    }
+
+    go func() {
+        wg.Wait()
+        close(out)          // close only after every input is drained
+    }()
+
+    return out
+}
+```
+
+### A pipeline
+
+Each stage receives from the previous one and sends to the next:
+
+```go
+func numbers(nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for _, n := range nums {
+            out <- n
+        }
+    }()
+    return out
+}
+
+func square(in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            out <- n * n
+        }
+    }()
+    return out
+}
+
+func main() {
+    for v := range square(numbers(1, 2, 3, 4)) {
+        fmt.Println(v)      // 1 4 9 16
+    }
+}
+```
+
+Every stage is an independent goroutine, and they run concurrently. Adding a filter stage means one more function and one more call, with nothing else changing.
+
+## When not to use a channel
+
+Channels are not the answer to every concurrency problem, and reaching for one where a mutex fits produces code that is harder to follow.
+
+```text
+   Passing ownership of data between goroutines  →  channel
+   Distributing work to several workers          →  channel
+   Signalling an event or completion             →  channel
+   Streaming results as they arrive              →  channel
+
+   Protecting a shared struct or map             →  sync.Mutex
+   A simple counter                              →  sync/atomic
+   Waiting for N goroutines to finish            →  sync.WaitGroup
+   Caching                                       →  a mutex-guarded map
+```
+
+The community guidance from the Go team is direct: use channels for communication, use `sync` for state. A channel wrapped around a shared counter is slower and less clear than an atomic increment.
+
+Next, let's look at buffered channels and directional types, which are the two things that turn channels from a demo into a tool.

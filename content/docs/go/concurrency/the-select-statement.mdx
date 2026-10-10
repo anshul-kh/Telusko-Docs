@@ -1,0 +1,374 @@
+---
+title: The Select Statement
+---
+
+A channel receive blocks until a value arrives. That is fine when there is one channel. When a goroutine needs to wait on a result **or** a timeout **or** a cancellation signal, blocking on any single one of them is wrong.
+
+`select` waits on all of them at once.
+
+```go
+select {
+case v := <-results:
+    handle(v)
+case <-time.After(5 * time.Second):
+    return errors.New("timed out")
+case <-ctx.Done():
+    return ctx.Err()
+}
+```
+
+Whichever is ready first wins. The other cases are simply not taken.
+
+## How it behaves
+
+```text
+   No case ready         →  block until one is
+   Exactly one ready     →  take it
+   Several ready         →  choose one at random
+   default present       →  take default immediately if nothing else is ready
+```
+
+The random choice is deliberate. Taking the first ready case in source order would starve later cases whenever an earlier one is always available, so Go picks uniformly among the ready ones.
+
+```go
+func main() {
+    a := make(chan string)
+    b := make(chan string)
+
+    go func() { time.Sleep(100 * time.Millisecond); a <- "from a" }()
+    go func() { time.Sleep(200 * time.Millisecond); b <- "from b" }()
+
+    for i := 0; i < 2; i++ {
+        select {
+        case msg := <-a:
+            fmt.Println(msg)
+        case msg := <-b:
+            fmt.Println(msg)
+        }
+    }
+}
+```
+
+```text
+from a
+from b
+```
+
+## Non-blocking operations with default
+
+A `default` case makes `select` never block:
+
+```go
+// Non-blocking receive
+select {
+case v := <-ch:
+    fmt.Println("got", v)
+default:
+    fmt.Println("nothing available")
+}
+
+// Non-blocking send
+select {
+case ch <- value:
+    fmt.Println("sent")
+default:
+    fmt.Println("channel full, dropped")
+}
+```
+
+The non-blocking send is genuinely useful for shedding load rather than blocking under pressure:
+
+```go
+func (m *Metrics) Record(event Event) {
+    select {
+    case m.events <- event:
+        // queued
+    default:
+        m.dropped.Add(1)      // buffer full, drop rather than slow the caller
+    }
+}
+```
+
+Metrics and telemetry are exactly the kind of thing that should never block the work they are measuring.
+
+<Callout type="warn">
+A `select` with `default` inside a `for` loop with nothing else in it is a busy wait. It spins the CPU at full speed doing nothing:
+
+```go
+for {
+    select {
+    case v := <-ch:
+        process(v)
+    default:
+        // burns a core
+    }
+}
+```
+
+Drop the `default` and let the select block, which is what you almost always want.
+</Callout>
+
+## Timeouts
+
+The canonical use:
+
+```go
+select {
+case result := <-resultCh:
+    return result, nil
+case <-time.After(3 * time.Second):
+    return nil, errors.New("operation timed out")
+}
+```
+
+`time.After` returns a channel that receives once, after the duration.
+
+<Callout type="info">
+`time.After` allocates a timer that lives until it fires, even if the select took another branch. In a loop that runs frequently, those timers accumulate. Use `time.NewTimer` and stop it when you are done:
+
+```go
+timer := time.NewTimer(3 * time.Second)
+defer timer.Stop()
+
+select {
+case result := <-resultCh:
+    return result, nil
+case <-timer.C:
+    return nil, errTimeout
+}
+```
+
+Go 1.23 made unstopped timers eligible for collection sooner, which softens this considerably, but the explicit form is still better in a hot loop.
+</Callout>
+
+In practice, a `context` with a deadline is the more idiomatic timeout, because it propagates to everything downstream:
+
+```go
+ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+defer cancel()
+
+select {
+case result := <-resultCh:
+    return result, nil
+case <-ctx.Done():
+    return nil, ctx.Err()
+}
+```
+
+## The worker loop
+
+`select` in a `for` is the shape of nearly every long-running goroutine in Go:
+
+```go
+func worker(ctx context.Context, jobs <-chan Job, results chan<- Result) {
+    for {
+        select {
+        case job, ok := <-jobs:
+            if !ok {
+                return              // jobs channel closed, no more work
+            }
+            results <- process(job)
+
+        case <-ctx.Done():
+            return                  // cancelled
+        }
+    }
+}
+```
+
+Two exit paths, both explicit. This goroutine cannot leak.
+
+Remember that `break` inside a `select` leaves the select, not the loop. When you need to exit the loop from a case, use a label or a `return`:
+
+```go
+loop:
+for {
+    select {
+    case v := <-ch:
+        process(v)
+    case <-quit:
+        break loop          // without the label, this only exits the select
+    }
+}
+```
+
+## Disabling a case with a nil channel
+
+A nil channel blocks forever, and a case that can never proceed is simply never chosen. Setting a channel variable to nil therefore switches its case off.
+
+This turns out to be the clean way to drain two channels that finish at different times:
+
+```go
+func merge(a, b <-chan int) <-chan int {
+    out := make(chan int)
+
+    go func() {
+        defer close(out)
+
+        for a != nil || b != nil {
+            select {
+            case v, ok := <-a:
+                if !ok {
+                    a = nil          // disable this case, keep draining b
+                    continue
+                }
+                out <- v
+
+            case v, ok := <-b:
+                if !ok {
+                    b = nil
+                    continue
+                }
+                out <- v
+            }
+        }
+    }()
+
+    return out
+}
+```
+
+Without the nil trick, a closed channel would be permanently ready and the select would spin on it forever, receiving zero values.
+
+The same idea toggles a case on and off:
+
+```go
+var sendCh chan<- Result       // nil, so the send case is disabled
+
+for {
+    select {
+    case job := <-jobs:
+        result = process(job)
+        sendCh = output        // enable sending now that we have something
+
+    case sendCh <- result:
+        sendCh = nil           // disable until the next result
+    }
+}
+```
+
+## Waiting for the first of several
+
+```go
+func fastest(ctx context.Context, urls []string) (string, error) {
+    type result struct {
+        body string
+        err  error
+    }
+
+    ch := make(chan result, len(urls))     // buffered so losers do not leak
+
+    ctx, cancel := context.WithCancel(ctx)
+    defer cancel()                         // cancels the slower requests
+
+    for _, u := range urls {
+        go func(u string) {
+            body, err := fetch(ctx, u)
+            ch <- result{body, err}
+        }(u)
+    }
+
+    var lastErr error
+    for range urls {
+        select {
+        case r := <-ch:
+            if r.err == nil {
+                return r.body, nil         // first success wins
+            }
+            lastErr = r.err
+        case <-ctx.Done():
+            return "", ctx.Err()
+        }
+    }
+
+    return "", fmt.Errorf("all attempts failed: %w", lastErr)
+}
+```
+
+Two details make this leak-free. The channel is buffered to `len(urls)`, so every goroutine can deposit its result and exit even after a winner has been chosen. And the deferred `cancel` tells the losers to stop working.
+
+## Heartbeats and periodic work
+
+```go
+func monitor(ctx context.Context, checks <-chan Check) {
+    ticker := time.NewTicker(30 * time.Second)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case c := <-checks:
+            handle(c)
+
+        case <-ticker.C:
+            reportHealth()
+
+        case <-ctx.Done():
+            slog.Info("monitor stopping")
+            return
+        }
+    }
+}
+```
+
+`time.NewTicker` fires repeatedly, and it must be stopped or it leaks a goroutine and a timer. The `defer ticker.Stop()` on the line after creating it is the habit to build.
+
+## An empty select
+
+```go
+select {}         // blocks forever
+```
+
+Occasionally used at the end of `main` in a program whose real work happens entirely in goroutines. It is more explicit than `time.Sleep(math.MaxInt64)`, though a proper shutdown signal is better than either:
+
+```go
+sig := make(chan os.Signal, 1)
+signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+<-sig
+```
+
+## The patterns in one place
+
+```go
+// Timeout
+select {
+case v := <-ch:
+case <-time.After(d):
+}
+
+// Cancellation
+select {
+case v := <-ch:
+case <-ctx.Done():
+}
+
+// Non-blocking receive
+select {
+case v := <-ch:
+default:
+}
+
+// Non-blocking send, drop on full
+select {
+case ch <- v:
+default:
+}
+
+// Worker loop with two exits
+for {
+    select {
+    case job, ok := <-jobs:
+        if !ok { return }
+    case <-ctx.Done():
+        return
+    }
+}
+
+// Disable a case
+ch = nil
+
+// Periodic
+ticker := time.NewTicker(d)
+defer ticker.Stop()
+```
+
+Next, let's look at the `sync` package, which handles the concurrency problems that channels are the wrong tool for.

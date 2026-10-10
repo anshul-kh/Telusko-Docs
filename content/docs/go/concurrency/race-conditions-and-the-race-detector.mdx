@@ -1,0 +1,380 @@
+---
+title: Race Conditions and the Race Detector
+---
+
+```go
+func main() {
+    counter := 0
+    var wg sync.WaitGroup
+
+    for i := 0; i < 1000; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            counter++
+        }()
+    }
+
+    wg.Wait()
+    fmt.Println(counter)
+}
+```
+
+Run it and you get 1000. Run it again and you get 1000. Run it on your laptop a hundred times and it is 1000 every time. Deploy it to a machine with more cores under real load and it starts returning 973, then 891, then 1000 again.
+
+This is what makes race conditions the worst category of bug in concurrent programming: the code is wrong, and it usually works.
+
+## Why the counter loses increments
+
+`counter++` is not one operation. It is three:
+
+```text
+   1. read counter from memory       →  register
+   2. add 1                          →  register
+   3. write register                 →  memory
+```
+
+Two goroutines interleaving them:
+
+```text
+   goroutine A            goroutine B          counter
+   ───────────            ───────────          ───────
+   read  (5)                                      5
+                          read  (5)               5
+   add   (6)                                      5
+                          add   (6)               5
+   write (6)                                      6
+                          write (6)               6    ← should be 7
+```
+
+Both read 5, both wrote 6, and one increment vanished. The window is a few nanoseconds wide, which is why it almost never happens on a single core and happens constantly under real parallelism.
+
+## The race detector
+
+Go ships with a tool that finds these, and it is remarkably good.
+
+```bash
+go run -race main.go
+go test -race ./...
+go build -race
+```
+
+```text
+==================
+WARNING: DATA RACE
+Read at 0x00c000018098 by goroutine 8:
+  main.main.func1()
+      /tmp/main.go:13 +0x3c
+
+Previous write at 0x00c000018098 by goroutine 7:
+  main.main.func1()
+      /tmp/main.go:13 +0x50
+
+Goroutine 8 (running) created at:
+  main.main()
+      /tmp/main.go:11 +0x88
+==================
+```
+
+It tells you the address, both accesses, and where both goroutines were created. That is usually enough to find the problem in under a minute.
+
+### How it works
+
+The detector instruments every memory access and maintains a happens-before relationship for each address. When it sees two accesses to the same location from different goroutines with no synchronisation between them, and at least one is a write, it reports a race.
+
+This means it finds **actual** races that occurred during the run, not potential ones. It does not report false positives, which is unusual and very valuable in a tool like this.
+
+It also means it only finds races on code paths that executed. Running your test suite with `-race` finds races in the code your tests cover, and nowhere else.
+
+<Callout type="warn">
+`go test -race ./...` should be the default in CI. It costs about 5 to 10 times the CPU and about 5 to 10 times the memory, which is why it is not on by default, but a race found in CI is worth a hundred times what it costs to find one in production.
+</Callout>
+
+### Do not ship a race build
+
+The overhead is real, so `-race` is a development and testing tool. Production binaries are built without it.
+
+## Fixing the counter
+
+Three correct answers, in increasing order of generality.
+
+```go
+// 1. Atomic, fastest for a single value
+var counter atomic.Int64
+counter.Add(1)
+fmt.Println(counter.Load())
+
+// 2. Mutex, works for anything
+var (
+    mu      sync.Mutex
+    counter int
+)
+mu.Lock()
+counter++
+mu.Unlock()
+
+// 3. Channel, when the count is a stream of events
+counts := make(chan int)
+go func() {
+    total := 0
+    for range counts {
+        total++
+    }
+}()
+```
+
+For a plain counter, use the atomic. It is one line and it is faster than the alternatives by a wide margin.
+
+## Races you will actually meet
+
+### A shared map
+
+```go
+cache := map[string]string{}
+
+for _, k := range keys {
+    go func(k string) {
+        cache[k] = fetch(k)          // concurrent map writes
+    }(k)
+}
+```
+
+Go detects concurrent map writes at runtime and crashes deliberately, because a corrupted hash table is worse than a clear failure:
+
+```text
+fatal error: concurrent map writes
+```
+
+Fix with a mutex:
+
+```go
+type SafeCache struct {
+    mu   sync.RWMutex
+    data map[string]string
+}
+
+func (c *SafeCache) Set(k, v string) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.data[k] = v
+}
+
+func (c *SafeCache) Get(k string) (string, bool) {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    v, ok := c.data[k]
+    return v, ok
+}
+```
+
+### Appending to a shared slice
+
+```go
+var results []Result
+
+for _, item := range items {
+    go func(it Item) {
+        results = append(results, process(it))     // race on the slice header
+    }(item)
+}
+```
+
+`append` reads the header, possibly reallocates, and writes a new header. Two goroutines doing that concurrently lose entries and can corrupt the slice.
+
+Two fixes:
+
+```go
+// Preallocate and write to distinct indexes, no lock needed
+results := make([]Result, len(items))
+for i, item := range items {
+    go func(i int, it Item) {
+        results[i] = process(it)
+    }(i, item)
+}
+```
+
+```go
+// Or guard the append
+var mu sync.Mutex
+for _, item := range items {
+    go func(it Item) {
+        r := process(it)
+        mu.Lock()
+        results = append(results, r)
+        mu.Unlock()
+    }(item)
+}
+```
+
+The first is better when order matters and the count is known, which is most of the time.
+
+### Check then act
+
+```go
+if !cache.Has(key) {          // check
+    cache.Set(key, compute()) // act, but another goroutine may have set it
+}
+```
+
+The gap between the two operations is where the race lives. Make it one atomic operation:
+
+```go
+func (c *Cache) GetOrCompute(key string, compute func() string) string {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    if v, ok := c.data[key]; ok {
+        return v
+    }
+    v := compute()
+    c.data[key] = v
+    return v
+}
+```
+
+Holding the lock across `compute()` is not ideal if it is slow. `golang.org/x/sync/singleflight` solves that specific problem, collapsing duplicate concurrent calls into one.
+
+### Reading a value while another goroutine writes it
+
+```go
+type Server struct {
+    config *Config
+}
+
+// Goroutine A
+func (s *Server) Handle(r *Request) {
+    timeout := s.config.Timeout      // read
+}
+
+// Goroutine B
+func (s *Server) Reload(c *Config) {
+    s.config = c                     // write, races with the read
+}
+```
+
+An atomic pointer handles hot-swapping cleanly:
+
+```go
+type Server struct {
+    config atomic.Pointer[Config]
+}
+
+func (s *Server) Handle(r *Request) {
+    cfg := s.config.Load()
+    timeout := cfg.Timeout
+}
+
+func (s *Server) Reload(c *Config) {
+    s.config.Store(c)
+}
+```
+
+Readers always see a complete config, never a half-updated one.
+
+## What counts as safe without synchronisation
+
+Some things do not need protection, and knowing which saves unnecessary locking.
+
+```text
+   SAFE
+   Multiple goroutines READING the same value, with no writer
+   Writing to DISTINCT elements of a preallocated slice or array
+   Values sent over a channel (the channel provides the ordering)
+   Values captured before goroutines start and never modified
+   Immutable data of any kind
+
+   NOT SAFE
+   Any write alongside any other access, to the same location
+   Concurrent map writes, or a write alongside a read
+   append on a shared slice
+   Reassigning a shared variable, including a pointer or interface
+```
+
+The safest design is the one that avoids the question. Data that never changes after construction needs no synchronisation at all, and structuring code so that most of it is immutable removes whole categories of bug.
+
+## Testing for races
+
+```go
+func TestCounterIsConcurrencySafe(t *testing.T) {
+    c := NewCounter()
+
+    var wg sync.WaitGroup
+    for i := 0; i < 100; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for j := 0; j < 100; j++ {
+                c.Inc()
+            }
+        }()
+    }
+    wg.Wait()
+
+    if got := c.Value(); got != 10000 {
+        t.Errorf("got %d, want 10000", got)
+    }
+}
+```
+
+Run with `-race`. The assertion catches lost updates and the detector catches the race even if the count happens to come out right.
+
+Stress it a bit to widen the window:
+
+```bash
+go test -race -count=10 ./...
+go test -race -cpu=1,2,4,8 ./...
+```
+
+`-cpu` runs the tests at several levels of parallelism, which surfaces races that only appear with real concurrency.
+
+## Detecting leaks alongside races
+
+```go
+func TestNoGoroutineLeak(t *testing.T) {
+    before := runtime.NumGoroutine()
+
+    doWork()
+
+    time.Sleep(100 * time.Millisecond)     // let things wind down
+
+    after := runtime.NumGoroutine()
+    if after > before {
+        t.Errorf("leaked %d goroutines", after-before)
+    }
+}
+```
+
+`go.uber.org/goleak` does this properly, with retries and a readable report of what leaked:
+
+```go
+func TestMain(m *testing.M) {
+    goleak.VerifyTestMain(m)
+}
+```
+
+One line, and every test in the package now fails if it leaves a goroutine behind.
+
+## Designing races out
+
+Fixing races is good. Not having them is better, and a few habits get you most of the way.
+
+**Share nothing.** Give each goroutine its own data and combine the results at the end.
+
+**Make values immutable.** A struct that is never modified after construction is safe to share with any number of goroutines.
+
+**Confine ownership.** One goroutine owns a piece of state, and everyone else asks it through a channel.
+
+**Pass copies, not pointers.** Sending a value over a channel transfers a copy, and the sender should treat it as gone.
+
+**Keep synchronisation next to the data.** A mutex declared immediately above the fields it guards, with a comment saying so, is much harder to forget than one declared elsewhere.
+
+```go
+type Store struct {
+    mu    sync.RWMutex        // guards items
+    items map[string]Item
+
+    name string               // immutable after construction
+}
+```
+
+That completes concurrency. Next, let's step through the standard library packages you will reach for on almost every project.

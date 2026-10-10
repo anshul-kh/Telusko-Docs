@@ -1,0 +1,285 @@
+---
+title: Buffered Channels and Directions
+---
+
+Two refinements to channels, both small, both changing how you use them.
+
+A buffer decouples the sender from the receiver in time. A direction constrains what a function is allowed to do with a channel it was given. Together they turn a channel from something that works into something that documents itself.
+
+## Adding a buffer
+
+```go
+unbuffered := make(chan int)      // capacity 0
+buffered := make(chan int, 3)     // capacity 3
+```
+
+With a buffer, a send completes immediately as long as there is room:
+
+```go
+ch := make(chan int, 3)
+
+ch <- 1        // does not block
+ch <- 2        // does not block
+ch <- 3        // does not block, buffer is now full
+ch <- 4        // blocks until someone receives
+```
+
+```text
+   Unbuffered                  Buffered (capacity 3)
+   ──────────                  ─────────────────────
+   sender ──┐   ┌── receiver   sender ──► [ ][ ][ ] ──► receiver
+            └─X─┘                          
+   both must be ready          sender continues while there is room
+```
+
+`len` and `cap` work on channels:
+
+```go
+ch := make(chan int, 5)
+ch <- 1
+ch <- 2
+
+fmt.Println(len(ch))     // 2, values currently held
+fmt.Println(cap(ch))     // 5, total capacity
+```
+
+<Callout type="warn">
+Do not use `len(ch)` to decide whether to send. Between the check and the send, another goroutine may have filled the buffer. The value is only useful for metrics and debugging, never for control flow. Use `select` with a `default` for a non-blocking send.
+</Callout>
+
+## When a buffer earns its place
+
+### The sender must not block on an abandoned receiver
+
+The single most important use, and it prevents a goroutine leak:
+
+```go
+func fetchAsync(url string) <-chan Result {
+    ch := make(chan Result, 1)          // capacity 1
+
+    go func() {
+        ch <- doFetch(url)              // never blocks, even if nobody reads
+    }()
+
+    return ch
+}
+```
+
+If the caller times out and walks away, an unbuffered send would block that goroutine forever. With a buffer of one, the goroutine deposits its result and exits, and the value is garbage collected along with the channel.
+
+### Absorbing bursts
+
+```go
+jobs := make(chan Job, 100)
+```
+
+A producer that occasionally emits a burst can keep going while workers catch up. Without a buffer, every burst becomes backpressure on the producer immediately.
+
+### Semaphores
+
+A buffered channel used purely for its capacity, to limit concurrency:
+
+```go
+sem := make(chan struct{}, 10)          // at most 10 at a time
+
+for _, task := range tasks {
+    sem <- struct{}{}                   // acquire, blocks when 10 are running
+
+    go func(t Task) {
+        defer func() { <-sem }()        // release
+        process(t)
+    }(task)
+}
+```
+
+Ten concurrent tasks regardless of how many there are in total. This is a common way to bound parallelism when you do not want a full worker pool.
+
+### Known, fixed result counts
+
+```go
+results := make(chan Result, len(urls))     // exactly enough room
+
+for _, url := range urls {
+    go func(u string) {
+        results <- fetch(u)
+    }(url)
+}
+
+for range urls {
+    fmt.Println(<-results)
+}
+```
+
+No goroutine ever blocks, and the collector reads at its own pace.
+
+## When a buffer hides a problem
+
+<Callout type="warn">
+The most common misuse is adding a buffer because a program deadlocked. The buffer makes the symptom go away and leaves the design wrong. If your consumer is genuinely slower than your producer, a buffer of 100 buys you 100 items of delay before the same deadlock returns under load.
+</Callout>
+
+A related trap is losing backpressure. Unbuffered channels naturally slow the producer to the consumer's rate, which is often exactly what you want. A large buffer removes that feedback and lets the producer race ahead until memory becomes the limit.
+
+```text
+   Reason for the buffer                  Verdict
+   ─────────────────────                  ───────
+   Sender must never block                good
+   Bounding concurrency (semaphore)       good
+   Known fixed number of results          good
+   Smoothing a bursty producer            good, with a modest size
+   Making a deadlock go away              bad, fix the design
+   "It might be faster"                   bad, measure first
+   Very large, "just in case"             bad, you lost backpressure
+```
+
+The default should be unbuffered. Add a buffer when you can say what problem it solves.
+
+## Directional channels
+
+A function parameter can restrict a channel to sending or receiving:
+
+```go
+func produce(out chan<- int)    // send only
+func consume(in <-chan int)     // receive only
+func both(ch chan int)          // bidirectional
+```
+
+The arrow position mirrors the operation: `chan<-` is where values go in, `<-chan` is where they come out.
+
+```go
+func produce(out chan<- int) {
+    for i := 0; i < 5; i++ {
+        out <- i
+    }
+    close(out)
+
+    // <-out            compile error: receive from send-only channel
+}
+
+func consume(in <-chan int) {
+    for v := range in {
+        fmt.Println(v)
+    }
+
+    // in <- 1          compile error: send to receive-only channel
+    // close(in)        compile error: close of receive-only channel
+}
+```
+
+That third error is the valuable one. A receive-only channel cannot be closed, which enforces the rule that only senders close.
+
+### Conversion is one way
+
+A bidirectional channel converts implicitly to either direction. The reverse never happens:
+
+```go
+ch := make(chan int)
+
+produce(ch)      // fine, chan int becomes chan<- int
+consume(ch)      // fine, chan int becomes <-chan int
+
+var send chan<- int = ch
+var full chan int = send     // compile error, cannot convert back
+```
+
+So a function that returns `<-chan int` has genuinely given up the ability to send, and so has everyone downstream.
+
+### Use them in every signature
+
+Directional types cost nothing and communicate intent precisely:
+
+```go
+// The signature alone tells you the data flow
+func generate(ctx context.Context, n int) <-chan int
+func transform(in <-chan int) <-chan string
+func collect(in <-chan string) []string
+func fanOut(in <-chan Job, out chan<- Result, workers int)
+```
+
+Reading `fanOut`, you know without opening it that jobs come in and results go out, and the compiler guarantees it.
+
+## The two combined, in a pipeline
+
+```go
+func numbers(ctx context.Context, nums ...int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for _, n := range nums {
+            select {
+            case out <- n:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return out
+}
+
+func square(ctx context.Context, in <-chan int) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            select {
+            case out <- n * n:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return out
+}
+
+func filter(ctx context.Context, in <-chan int, keep func(int) bool) <-chan int {
+    out := make(chan int)
+    go func() {
+        defer close(out)
+        for n := range in {
+            if !keep(n) {
+                continue
+            }
+            select {
+            case out <- n:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+    return out
+}
+```
+
+```go
+func main() {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    stage1 := numbers(ctx, 1, 2, 3, 4, 5, 6, 7, 8)
+    stage2 := square(ctx, stage1)
+    stage3 := filter(ctx, stage2, func(n int) bool { return n%2 == 0 })
+
+    for v := range stage3 {
+        fmt.Println(v)      // 4 16 36 64
+    }
+}
+```
+
+Every stage returns `<-chan int`, so no stage can accidentally send back up the pipeline. Every stage closes its own output, so the close propagates naturally to the end. Every send is wrapped in a `select` on the context, so cancelling at any point unwinds the whole thing without leaks.
+
+That last detail is what separates a pipeline that works from one that leaks. Without the context case, cancelling the consumer leaves every upstream goroutine blocked on a send that nobody will ever receive.
+
+## Choosing a capacity
+
+```text
+   0            the default. use it unless you have a reason not to
+   1            the sender must not block on an abandoned receiver
+   N workers    a semaphore bounding concurrency to N
+   len(items)   a known, fixed number of results
+   10 to 100    smoothing a bursty producer
+   very large   almost always a mistake
+```
+
+When you cannot name the reason for a specific number, the number is probably wrong. Unbuffered is a defensible default that fails loudly rather than quietly.
+
+Next, let's look at `select`, which is what lets a goroutine wait on several channels at once.
