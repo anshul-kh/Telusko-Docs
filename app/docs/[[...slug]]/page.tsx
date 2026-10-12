@@ -1,6 +1,5 @@
-// export const dynamic = 'force-dynamic';
-export const revalidate = 900; // cache for 15 mins (we can change it based on our requirements)
-// export const dynamicParams = true;
+// Each page is rendered on its first visit and then served from the shared cache until the next deploy
+export const revalidate = false;
 
 import { getPageImage, source } from '@/lib/source';
 import {
@@ -68,9 +67,11 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   );
 }
 
-// export async function generateStaticParams() {
-//   return source.generateParams();
-// }
+// Nothing is pre-rendered at build time (all pages would make the build too large);
+// returning [] lets every page be cached on first visit instead
+export async function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata(
   props: PageProps<'/docs/[[...slug]]'>,

@@ -4,6 +4,14 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
+// Cache each raw markdown response on first request until the next deploy
+export const dynamic = 'force-static';
+export const revalidate = false;
+
+export function generateStaticParams() {
+  return [];
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string[] }> }

@@ -5,6 +5,11 @@ import { generate as DefaultImage } from 'fumadocs-ui/og';
 
 export const revalidate = false;
 
+// Generate each image on first request and cache it until the next deploy
+export function generateStaticParams() {
+  return [];
+}
+
 export async function GET(
   _req: Request,
   { params }: RouteContext<'/og/docs/[...slug]'>,
