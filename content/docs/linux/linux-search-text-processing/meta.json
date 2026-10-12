@@ -1,0 +1,10 @@
+{
+    "title": "Linux Search & Text Processing",
+    "pages": [
+        "grep-command.mdx",
+        "linux-pipes.mdx",
+        "find-command.mdx",
+        "locate-command.mdx",
+        "sed-command.mdx"
+    ]
+}

@@ -4,6 +4,8 @@
         "getting-started.mdx",
         "introduction.mdx",
         "linux-environment-setup-on-aws",
-        "linux-fundamentals"
+        "linux-fundamentals",
+        "linux-search-text-processing",
+        "linux-users-permissions-ownership"
     ]
 }  

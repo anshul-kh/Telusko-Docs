@@ -1,0 +1,153 @@
+---
+title: Linux Pipes - Combining Commands
+---
+
+## What Is a Pipe?
+
+A **pipe (`|`)** in Linux passes the standard output of one command as the standard input of another command.
+
+Pipes let you combine simple commands to perform more useful operations. For example, you can search a log file for errors and then count the matching lines without saving the intermediate results to another file.
+
+### Basic Syntax
+
+```bash
+command1 | command2 | command3
+```
+
+Each command processes the data it receives and passes its output to the next command.
+
+For example:
+
+```text
+Command 1 → Pipe (|) → Command 2 → Pipe (|) → Command 3
+```
+
+The final command produces the result you need.
+
+---
+
+## Practical Examples
+
+### 1. Search for Text and Filter Output
+
+Suppose `error.log` contains application logs, and you want to find lines containing `Exception`.
+
+```bash
+cat error.log | grep "Exception"
+```
+
+Here, `cat` sends the file contents through the pipe, and `grep` displays only matching lines.
+
+However, you can search the file directly without `cat`:
+
+```bash
+grep "Exception" error.log
+```
+
+**Best practice:** Use the direct `grep` command when searching a file. Pipes are most useful when you need to process the output of another command.
+
+### 2. Filter a Directory Listing
+
+You can combine `ls` with `grep` to filter its output.
+
+```bash
+ls -l | grep "\.log$"
+```
+
+This filters the long directory listing to show entries whose names end in `.log`.
+
+Similarly:
+
+```bash
+ls -l | grep "\.txt$"
+```
+
+This filters for entries whose names end in `.txt`.
+
+**Note:** Filtering `ls` output is useful for learning pipes, but it is not the most reliable way to find files by name. For filename searches, commands such as `find` are more appropriate.
+
+### 3. Search Command History
+
+Use a pipe to find previously recorded shell commands containing a particular word.
+
+```bash
+history | grep "docker"
+```
+
+- `history` displays commands recorded in the shell history.
+- `grep "docker"` filters the output to matching entries.
+
+This is helpful when you want to find a command you used earlier.
+
+### 4. Count Matching Lines in a Log File
+
+Suppose you want to count the lines in `error.log` that contain `Exception`.
+
+```bash
+grep "Exception" error.log | wc -l
+```
+
+How it works:
+
+1. `grep "Exception" error.log` displays lines containing `Exception`.
+2. The pipe (`|`) passes those lines to `wc -l`.
+3. `wc -l` counts the lines it receives.
+
+The result is the number of matching lines.
+
+You can also count them directly using `grep`:
+
+```bash
+grep -c "Exception" error.log
+```
+
+Both approaches count matching lines, but the piped version demonstrates how commands can work together.
+
+### 5. Combine Multiple Pipes
+
+You can connect several commands to process data in stages.
+
+```bash
+cat app.log | grep -i "error" | wc -l
+```
+
+This command reads `app.log`, filters lines containing `error` regardless of case, and counts the matching lines.
+
+A more direct version is:
+
+```bash
+grep -i "error" app.log | wc -l
+```
+
+The general pattern is:
+
+```bash
+command1 | command2 | command3
+```
+
+Each stage receives the previous command's output, processes it, and passes its own output forward.
+
+---
+
+## Quick Reference
+
+| Command | Purpose |
+|---|---|
+| `ls -l \| grep "\.log$"` | Filter a directory listing for `.log` entries |
+| `history \| grep "docker"` | Find history entries containing `docker` |
+| `grep "Exception" error.log \| wc -l` | Count lines containing `Exception` |
+| `grep -i "error" app.log \| wc -l` | Count lines containing `error`, ignoring case |
+
+---
+
+## Summary
+
+- A pipe (`|`) passes one command's standard output to another command's standard input.
+- Pipes let you combine commands without manually transferring intermediate results.
+- Commands such as `grep`, `wc`, `sort`, and `history` are commonly used in pipelines.
+- You can chain multiple pipes to process data in stages.
+- Prefer direct commands when they can accomplish the task more simply; use pipes when combining commands adds value.
+
+**Remember:** A pipe connects commands. Each command handles one part of the task, and together they produce the result you need.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>
