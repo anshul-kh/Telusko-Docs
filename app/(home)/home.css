@@ -1,0 +1,127 @@
+/* Homepage-only design tokens. Scoped under .home-shell so /docs pages
+   (which keep the existing --color-fd-* blue theme in app/global.css) are
+   never affected. Light values live on .home-shell itself; .dark on <html>
+   (next-themes' class strategy, same mechanism global.css uses) flips them. */
+
+html:has(.home-shell) {
+  scroll-behavior: smooth;
+}
+
+.home-shell {
+  --home-bg: #faf9f4;
+  --home-border: rgba(14, 14, 14, 0.12);
+  --home-foreground: #0e0e0e;
+  --home-foreground-muted: rgba(14, 14, 14, 0.78);
+  --home-foreground-subtle: rgba(14, 14, 14, 0.65);
+  --home-foreground-faint: rgba(14, 14, 14, 0.5);
+  --home-surface: rgba(14, 14, 14, 0.04);
+  --home-surface-strong: rgba(14, 14, 14, 0.07);
+  --home-surface-border: rgba(14, 14, 14, 0.1);
+  --home-lime: #b8d94e;
+  --home-lime-text: #5c7a17;
+
+  background: var(--home-bg);
+  color: var(--home-foreground);
+  font-family: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: clip;
+}
+
+.dark .home-shell {
+  --home-bg: #0e0e0e;
+  --home-border: #1a1a1a;
+  --home-foreground: #fffffd;
+  --home-foreground-muted: rgba(255, 255, 253, 0.82);
+  --home-foreground-subtle: rgba(255, 255, 253, 0.7);
+  --home-foreground-faint: rgba(255, 255, 253, 0.6);
+  --home-surface: rgba(255, 255, 255, 0.05);
+  --home-surface-strong: rgba(255, 255, 255, 0.1);
+  --home-surface-border: rgba(255, 255, 255, 0.08);
+  --home-lime: #b8d94e;
+  --home-lime-text: #b8d94e;
+}
+
+.dark .home-shell #home-hero {
+  background:
+    linear-gradient(0deg, #0e0e0e, #0e0e0e),
+    linear-gradient(180deg, rgba(184, 217, 78, 0) 66.83%, rgba(184, 217, 78, 0.048) 100%);
+}
+
+.home-shell .home-telusko-cta-label {
+  color: var(--home-lime-text);
+}
+
+.home-shell .font-mono-home {
+  font-family: var(--font-mono-home), ui-monospace, monospace;
+}
+
+/* Apple-style continuous-curvature corners on every rounded element
+   (cards, buttons, pills, thumbnails, nav affordances). Unsupported
+   browsers just keep their normal circular-arc border-radius. */
+.home-shell [class*='rounded'] {
+  corner-shape: squircle;
+}
+
+.home-shell .rounded-full {
+  corner-shape: round;
+}
+
+.home-shell .home-card-surface {
+  background: var(--home-surface);
+  border: 1px solid var(--home-surface-border);
+}
+
+/* Fades the left/right edges of the infinite tech marquee. */
+.home-shell .home-marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 8%,
+    #000 92%,
+    transparent 100%
+  );
+}
+
+/* Shorter fade for the slim course-promo marquee in the header bar, which
+   has far less runway than the full-bleed tech ticker. */
+.home-shell .home-promo-mask {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 6%,
+    #000 90%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 6%,
+    #000 90%,
+    transparent 100%
+  );
+}
+
+/* Lets course thumbnails show in full (object-contain) against a neutral
+   surface instead of being cropped by object-cover. */
+.home-shell .home-course-media {
+  background: var(--home-surface-strong);
+  border: 1px solid var(--home-surface-border);
+}
+
+.home-shell .home-tech-ticker-link:hover {
+  color: var(--home-foreground);
+}
+
+.home-shell .home-no-scrollbar {
+  scrollbar-width: none;
+}
+
+.home-shell .home-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
