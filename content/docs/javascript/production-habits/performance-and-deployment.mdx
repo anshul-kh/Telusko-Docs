@@ -1,0 +1,43 @@
+---
+title: Performance and Deployment
+description: Measure bottlenecks, avoid blocking work, and ship repeatable builds.
+---
+
+Performance work begins with a measurement and a user-visible goal. A fast loop is not useful if the page spends seconds waiting on a network response, and a smaller bundle matters little if a long task freezes interaction. Measure the slow path before changing it.
+
+```js
+const started = performance.now();
+const result = Array.from({ length: 100_000 }, (_, index) => index).filter((n) => n % 2 === 0);
+console.log({ count: result.length, milliseconds: performance.now() - started });
+```
+
+Run this in a modern browser or Node.js. The time will vary by machine and runtime. Run multiple times and compare similar inputs; a single tiny benchmark is not proof of a speedup. In Node, profile CPU and memory with the inspector; in a browser, use the Performance and Network panels to find long tasks and slow requests.
+
+## Measure performance
+
+Start with a user-visible symptom and collect a baseline under repeatable conditions. Measure the operation that matters, use realistic input sizes, and repeat samples because runtimes and machines vary. Browser developer tools provide CPU, network, and rendering profiles; Node provides performance APIs and inspector profiling. Avoid optimizing a tiny synthetic loop if real requests, rendering, or data access dominate.
+
+## Match the problem to the fix
+
+- Repeated linear searches through large data may benefit from a `Map` or `Set`.
+- Too many network requests may benefit from caching, batching, or pagination.
+- A large browser script may benefit from dynamic `import()` so less code loads initially.
+- CPU-heavy browser work may need a Web Worker; a Node server may need worker threads or a separate job process.
+- Large files should be streamed rather than fully buffered.
+- Large DOM updates can be assembled off-screen and appended together to reduce repeated work.
+
+Avoid micro-optimizing a function until you know it is a bottleneck. Never trade away input validation or correct error handling for a tiny benchmark improvement.
+
+## A repeatable release
+
+Use a committed `package.json` and lockfile, install with `npm ci` in a clean environment, run tests, then start the program with a documented command. Keep environment-specific values in environment variables. Configure a health check, log useful errors, and ensure the process handles shutdown. A static browser app can be hosted as files; a Node HTTP server needs a runtime and a listening port supplied by its environment.
+
+**Try it:** Time one operation in your own project, record its input size and several measurements, then make one change and compare using the same conditions. State whether the difference is large enough to matter to a user.
+
+## Deployment checklist
+
+Use a clean install from the lockfile, run the project's checks, and build with the same runtime version used in production. Keep secrets in the deployment environment, not in source code or client bundles. Configure production logging and monitor failures after release; a successful build does not prove every runtime path works.
+
+For browser delivery, serve static assets with suitable caching and compression, use HTTPS, and keep source maps access-controlled if they reveal implementation details. For Node services, define health checks, graceful shutdown, resource limits, and a rollback path. Record the version being deployed so an incident can be tied to a specific build.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

@@ -1,0 +1,323 @@
+---
+title: strconv and Parsing
+---
+
+Everything that arrives from outside your program arrives as text. Command line arguments, environment variables, HTTP query parameters, form fields, CSV cells, configuration files. Turning that text into typed values, and handling the cases where it is not what you expected, is what `strconv` is for.
+
+The package is small and every parsing function returns an error, which is the part people skip and then regret.
+
+## Strings to numbers
+
+```go
+import "strconv"
+
+n, err := strconv.Atoi("42")                    // 42, the common case
+n, err := strconv.ParseInt("42", 10, 64)        // base 10, 64-bit
+n, err := strconv.ParseInt("ff", 16, 64)        // 255, hexadecimal
+n, err := strconv.ParseInt("0x1F", 0, 64)       // 31, base inferred from the prefix
+u, err := strconv.ParseUint("42", 10, 64)       // unsigned
+f, err := strconv.ParseFloat("3.14", 64)        // 3.14
+b, err := strconv.ParseBool("true")             // true
+```
+
+`ParseInt` takes three arguments: the string, the base, and the bit size.
+
+```text
+   base      0 infers from the prefix: 0x hex, 0b binary, 0o octal, else decimal
+             2 to 36 forces that base
+
+   bitSize   0, 8, 16, 32, or 64. limits the result and reports overflow.
+             0 means int
+```
+
+The bit size matters, because it is how you detect a value that will not fit:
+
+```go
+n, err := strconv.ParseInt("300", 10, 8)
+// err: value out of range, n is 127
+```
+
+`Atoi` is `ParseInt(s, 10, 0)` with an `int` result. It is faster and it is what you want for ordinary decimal input.
+
+`ParseBool` is more permissive than it looks:
+
+```go
+strconv.ParseBool("1")       // true
+strconv.ParseBool("t")       // true
+strconv.ParseBool("TRUE")    // true
+strconv.ParseBool("0")       // false
+strconv.ParseBool("F")       // false
+strconv.ParseBool("yes")     // error
+```
+
+## Numbers to strings
+
+```go
+strconv.Itoa(42)                              // "42"
+strconv.FormatInt(255, 16)                    // "ff"
+strconv.FormatInt(255, 2)                     // "11111111"
+strconv.FormatUint(42, 10)                    // "42"
+strconv.FormatFloat(3.14159, 'f', 2, 64)      // "3.14"
+strconv.FormatFloat(3.14159, 'e', 3, 64)      // "3.142e+00"
+strconv.FormatFloat(3.14159, 'g', -1, 64)     // "3.14159", shortest round-trip
+strconv.FormatBool(true)                      // "true"
+strconv.Quote("hi\tthere")                    // "\"hi\\tthere\""
+```
+
+The `FormatFloat` arguments are format, precision, and bit size:
+
+```text
+   'f'   decimal, no exponent          123.456
+   'e'   scientific                    1.23456e+02
+   'g'   %e for large exponents, %f otherwise
+   'b'   binary exponent
+
+   precision   digits after the point, or -1 for the shortest
+               representation that parses back to the same value
+```
+
+That `-1` is the one to remember. It gives you the shortest string that round-trips exactly, which is almost always what you want for serialising a float.
+
+<Callout type="info">
+`fmt.Sprintf("%d", n)` produces the same result as `strconv.Itoa(n)` and is roughly three times slower, because it goes through reflection and the formatting machinery. For one call nobody cares. For a loop over a million rows, use `strconv`.
+</Callout>
+
+## Handle the error, every time
+
+```go
+n, _ := strconv.Atoi(userInput)        // n is 0 for any bad input
+```
+
+Zero is indistinguishable from a genuine `"0"`, so a typo in a config file silently becomes a valid-looking value. This is one of the most common sources of quiet misconfiguration.
+
+```go
+n, err := strconv.Atoi(userInput)
+if err != nil {
+    return fmt.Errorf("invalid count %q: %w", userInput, err)
+}
+```
+
+Including the offending input in the message matters. `strconv: parsing "": invalid syntax` on its own does not tell you which field was empty.
+
+The error type carries structured detail if you need it:
+
+```go
+var numErr *strconv.NumError
+if errors.As(err, &numErr) {
+    fmt.Println(numErr.Func)     // "Atoi"
+    fmt.Println(numErr.Num)      // the input string
+    fmt.Println(numErr.Err)      // ErrSyntax or ErrRange
+}
+
+if errors.Is(err, strconv.ErrRange) {
+    return fmt.Errorf("value %q is too large", input)
+}
+```
+
+Distinguishing "not a number" from "too big" gives users a much better message.
+
+## Parsing with defaults
+
+A helper worth having in every project that reads configuration:
+
+```go
+func envInt(key string, def int) int {
+    v := os.Getenv(key)
+    if v == "" {
+        return def
+    }
+    n, err := strconv.Atoi(v)
+    if err != nil {
+        slog.Warn("invalid integer in environment, using default",
+            "key", key, "value", v, "default", def)
+        return def
+    }
+    return n
+}
+```
+
+Or with generics, covering several types at once:
+
+```go
+func envOr[T any](key string, def T, parse func(string) (T, error)) T {
+    v, ok := os.LookupEnv(key)
+    if !ok || v == "" {
+        return def
+    }
+    parsed, err := parse(v)
+    if err != nil {
+        return def
+    }
+    return parsed
+}
+
+port := envOr("PORT", 8080, strconv.Atoi)
+debug := envOr("DEBUG", false, strconv.ParseBool)
+timeout := envOr("TIMEOUT", 30*time.Second, time.ParseDuration)
+```
+
+<Callout type="warn">
+Silently falling back to a default hides misconfiguration. For anything that matters, fail loudly at startup instead:
+
+```go
+port, err := strconv.Atoi(os.Getenv("PORT"))
+if err != nil {
+    return fmt.Errorf("PORT must be a number, got %q", os.Getenv("PORT"))
+}
+```
+
+A service that refuses to start with a clear message is far better than one that starts on the wrong port.
+</Callout>
+
+## Parsing durations and times
+
+Not `strconv`, but the same job:
+
+```go
+import "time"
+
+d, err := time.ParseDuration("1h30m")      // 90 minutes
+d, err := time.ParseDuration("500ms")
+d, err := time.ParseDuration("2.5s")
+d, err := time.ParseDuration("-30m")
+```
+
+Valid units are `ns`, `us`, `ms`, `s`, `m`, and `h`. There is no day or week unit, so express those as hours.
+
+```go
+t, err := time.Parse(time.RFC3339, "2026-08-08T10:30:00Z")
+t, err := time.Parse("2006-01-02", "2026-08-08")
+```
+
+That reference layout gets its own explanation on the next page, because it is unlike any other language's date formatting.
+
+## Parsing URLs and addresses
+
+```go
+import "net/url"
+
+u, err := url.Parse("https://api.example.com/v1/users?limit=10&sort=name")
+if err != nil {
+    return fmt.Errorf("invalid URL: %w", err)
+}
+
+u.Scheme                      // "https"
+u.Host                        // "api.example.com"
+u.Path                        // "/v1/users"
+u.Query().Get("limit")        // "10"
+```
+
+Building one safely, with encoding handled for you:
+
+```go
+u := &url.URL{
+    Scheme: "https",
+    Host:   "api.example.com",
+    Path:   "/v1/search",
+}
+q := u.Query()
+q.Set("q", "go programming")     // spaces get encoded correctly
+q.Set("limit", "20")
+u.RawQuery = q.Encode()
+
+fmt.Println(u.String())
+// https://api.example.com/v1/search?limit=20&q=go+programming
+```
+
+Never build a URL with string concatenation. Query values need escaping, and getting it wrong is both a bug and a security problem.
+
+```go
+import "net"
+
+host, port, err := net.SplitHostPort("localhost:8080")
+ip := net.ParseIP("192.168.1.1")
+_, network, err := net.ParseCIDR("10.0.0.0/8")
+```
+
+## Validating while parsing
+
+The most useful habit: parse into the type you want and validate the range in the same function, so the rest of the program never sees an invalid value.
+
+```go
+type Port int
+
+func ParsePort(s string) (Port, error) {
+    n, err := strconv.Atoi(s)
+    if err != nil {
+        return 0, fmt.Errorf("port %q is not a number: %w", s, err)
+    }
+    if n < 1 || n > 65535 {
+        return 0, fmt.Errorf("port %d is out of range 1-65535", n)
+    }
+    return Port(n), nil
+}
+```
+
+Now a `Port` value anywhere in the codebase is known to be valid, because there is no other way to construct one from input. This idea, sometimes called parse rather than validate, removes a whole category of defensive checks from the rest of the program.
+
+## A configuration loader
+
+Everything on this page, doing a real job:
+
+```go
+type Config struct {
+    Port        int
+    DatabaseURL string
+    Timeout     time.Duration
+    MaxConns    int
+    Debug       bool
+}
+
+func Load() (*Config, error) {
+    cfg := &Config{
+        Port:     8080,
+        Timeout:  30 * time.Second,
+        MaxConns: 25,
+    }
+
+    var errs []error
+
+    if v := os.Getenv("PORT"); v != "" {
+        n, err := strconv.Atoi(v)
+        if err != nil || n < 1 || n > 65535 {
+            errs = append(errs, fmt.Errorf("PORT: invalid value %q", v))
+        } else {
+            cfg.Port = n
+        }
+    }
+
+    cfg.DatabaseURL = os.Getenv("DATABASE_URL")
+    if cfg.DatabaseURL == "" {
+        errs = append(errs, errors.New("DATABASE_URL is required"))
+    } else if _, err := url.Parse(cfg.DatabaseURL); err != nil {
+        errs = append(errs, fmt.Errorf("DATABASE_URL: %w", err))
+    }
+
+    if v := os.Getenv("TIMEOUT"); v != "" {
+        d, err := time.ParseDuration(v)
+        if err != nil {
+            errs = append(errs, fmt.Errorf("TIMEOUT: %w", err))
+        } else {
+            cfg.Timeout = d
+        }
+    }
+
+    if v := os.Getenv("DEBUG"); v != "" {
+        b, err := strconv.ParseBool(v)
+        if err != nil {
+            errs = append(errs, fmt.Errorf("DEBUG: %w", err))
+        } else {
+            cfg.Debug = b
+        }
+    }
+
+    if len(errs) > 0 {
+        return nil, fmt.Errorf("configuration errors: %w", errors.Join(errs...))
+    }
+    return cfg, nil
+}
+```
+
+Collecting every error rather than returning on the first means an operator fixing a broken deployment sees all the problems at once instead of discovering them one restart at a time.
+
+Next, let's look at the `time` package, and the date format that confuses every newcomer to Go.

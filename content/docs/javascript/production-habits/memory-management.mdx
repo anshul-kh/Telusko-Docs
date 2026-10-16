@@ -1,0 +1,46 @@
+---
+title: Memory Management
+description: Understand reachability, leaks, weak collections, and practical cleanup.
+---
+
+JavaScript engines allocate memory as your program creates strings, arrays, functions, and objects. A garbage collector can reclaim an object when it is no longer **reachable** from live roots such as active variables, the global environment, or retained callbacks. You do not manually `free()` ordinary JavaScript objects, and you cannot rely on an exact collection time.
+
+```js
+let current = { tasks: new Array(1000).fill("read") };
+const alias = current;
+current = null;
+console.log(alias.tasks.length); // 1000: the object is still reachable
+```
+
+Setting `current` to `null` did not free the object because `alias` still refers to it. When the last strong reference disappears, the object becomes *eligible* for collection. That does not mean memory is returned immediately.
+
+## Reachability and garbage collection
+
+JavaScript engines reclaim memory that is no longer reachable from active program roots such as globals, the current stack, and live closures. Garbage collection timing is nondeterministic; code should not rely on an object being collected at a particular moment. Clearing a reference makes an object eligible for collection only when no other references remain.
+
+## Real leak patterns
+
+An event listener attached to a long-lived target may retain a closure, and that closure may retain a large data structure. A timer can do the same. A `Map` used as a cache may grow forever if entries are never removed. A detached DOM node can also remain reachable through a variable or listener. The solution is to define the intended lifetime: remove listeners, clear timers, bound caches, and release references when a feature ends.
+
+```js
+const controller = new AbortController();
+window.addEventListener("resize", () => console.log(window.innerWidth), {
+  signal: controller.signal,
+});
+// Later, when this view is removed:
+controller.abort();
+```
+
+The example runs in a browser. Aborting the controller removes this registered listener. For a timer, call `clearInterval(id)` or `clearTimeout(id)` as appropriate. A `WeakMap` can attach metadata to objects without keeping its keys alive by itself, but it cannot be enumerated or used as a normal cache with primitive keys.
+
+Memory leaks are best diagnosed with browser or Node heap snapshots. Compare snapshots after repeating the same action and look for objects that remain reachable unexpectedly. A process using more memory once is not proof of a leak; caches, JIT compilation, and garbage-collection timing can all change memory use.
+
+**Try it:** Add an interval that logs every second, save its ID, and clear it after three ticks. Explain why losing the ID makes cleanup harder and how the interval could keep referenced data alive.
+
+## Diagnose before optimizing
+
+A large heap is not automatically a leak; a growing heap after repeated identical work is a stronger clue. Compare snapshots or allocation profiles around the suspected action, then inspect which references keep unexpected objects reachable. Reproduce the same sequence before and after a change.
+
+Common sources include global caches without limits, event listeners never removed, intervals left running, detached DOM nodes referenced by closures, and retaining every request result in an array. Bound caches, cancel work, remove listeners when owners disappear, and avoid storing data longer than the feature needs.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

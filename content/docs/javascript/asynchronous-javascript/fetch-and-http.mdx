@@ -1,0 +1,64 @@
+---
+title: Fetch and HTTP
+description: Make requests, inspect status codes, and parse JSON safely.
+---
+
+`fetch()` is a host API available in modern browsers and Node.js. It returns a promise for a `Response`. A 404 or 500 response normally **fulfills** that promise; network failure or cancellation rejects it. Check `response.ok` before treating the body as success.
+
+```js
+async function loadUser(id) {
+  const url = new URL(`/users/${encodeURIComponent(id)}`, "https://api.example.com");
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+```
+
+`response.json()` is asynchronous and can fail when the body is invalid JSON. It parses data; it does not validate the resulting shape. A real application should check fields it relies on. A response body can usually be consumed only once, so do not call both `json()` and `text()` on the same response.
+
+For a JSON write, send a method, content type, and encoded body:
+
+```js
+const response = await fetch("https://api.example.com/tasks", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ title: "Read" }),
+});
+if (!response.ok) throw new Error(`Save failed: ${response.status}`);
+```
+
+HTTP methods communicate intent: GET reads, POST often creates, PUT replaces, PATCH changes part, and DELETE removes. Some responses have no body, such as 204; do not call `json()` on them. In browsers, cross-origin requests may be limited by CORS rules set by the server. CORS is not an authentication mechanism, and adding client headers cannot grant permission that the server has not provided.
+
+## Request details
+
+An HTTP request has a method, URL, headers, and sometimes a body. A response has a status, headers, and a body stream. `fetch()` resolves when response headers arrive; reading the body with `json()`, `text()`, or another reader is a separate asynchronous step. This means a connection can succeed while parsing the response still fails.
+
+For POST, PUT, and PATCH requests, send the content type expected by the server. Encode JSON with `JSON.stringify()` and do not manually concatenate user input into URLs or request bodies. Use `URL` and `URLSearchParams` for query strings, and validate fields before sending them.
+
+## Reliability and security
+
+Network requests can be slow, interrupted, redirected, or rejected by CORS. Add an abort signal for cancellation or time limits, and show loading, success, empty, and error states in the interface. Avoid retrying non-idempotent writes automatically unless the server supports an idempotency strategy; a retry after a lost response could create the same resource twice.
+
+Never put API secrets in browser code. Browser requests are visible to users, and CORS only controls which responses a browser script can read; it does not authenticate callers. Validate authorization and input on the server.
+
+## Follow a request and response
+
+The `loadUser()` example constructs a URL, calls `fetch`, receives a `Response`, checks its status, then parses JSON. Each step can fail differently. A malformed base URL fails before the request. A network problem rejects `fetch()`. An HTTP 404 produces a response with `ok === false`. A 200 response with invalid JSON fails in `response.json()`. Keeping these cases separate makes a useful error message possible.
+
+For query parameters, use `URL.searchParams` instead of building a string manually:
+
+```js
+const url = new URL("https://api.example.com/search");
+url.searchParams.set("query", "red & blue");
+console.log(url.search); // ?query=red+%26+blue
+```
+
+This encodes special characters so the server receives one query value. For path segments, encode each dynamic segment before appending it, as `loadUser()` does. A plain `encodeURIComponent()` result still needs thought when IDs may contain slashes or unusual characters; many APIs define allowed ID formats instead.
+
+HTTP caching, credentials, redirects, and timeouts affect production requests. `fetch` does not have a universal timeout option; use `AbortSignal.timeout()` where supported or an `AbortController` timer. Browser credential behavior and CORS depend on the request and server configuration. A browser can read only responses permitted by its same-origin and CORS rules.
+
+**Practice:** Fetch a public JSON endpoint in a browser console. Log its status first, then its parsed data. Try a missing route and observe that `fetch()` still returns a response.
+
+**Check:** A missing route normally gives a fulfilled `Response` with status 404, not a rejected `fetch` promise. Your code should check `response.ok` before claiming success.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

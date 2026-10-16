@@ -1,0 +1,332 @@
+---
+title: Worker Pools
+---
+
+You have ten thousand images to resize. Starting ten thousand goroutines works, technically, and then all ten thousand try to allocate memory and open files at the same time and the machine falls over.
+
+A worker pool fixes this by fixing the number of goroutines. Work arrives on a channel, a bounded set of workers consume it, and results come back on another channel. It is the most common concurrency pattern in production Go, and once you have written it twice it becomes automatic.
+
+## The shape
+
+```text
+                    ┌──────────┐
+   jobs channel ───►│ worker 1 │───┐
+        │           └──────────┘   │
+        │           ┌──────────┐   │
+        ├──────────►│ worker 2 │───┼───► results channel
+        │           └──────────┘   │
+        │           ┌──────────┐   │
+        └──────────►│ worker 3 │───┘
+                    └──────────┘
+
+   Every worker reads from the same jobs channel.
+   The channel distributes work automatically, no coordinator needed.
+```
+
+## The basic version
+
+```go
+type Job struct {
+    ID  int
+    URL string
+}
+
+type Result struct {
+    JobID int
+    Body  []byte
+    Err   error
+}
+
+func worker(id int, jobs <-chan Job, results chan<- Result) {
+    for job := range jobs {
+        body, err := fetch(job.URL)
+        results <- Result{JobID: job.ID, Body: body, Err: err}
+    }
+}
+
+func main() {
+    jobs := make(chan Job, 100)
+    results := make(chan Result, 100)
+
+    // Start a fixed number of workers.
+    for w := 1; w <= 5; w++ {
+        go worker(w, jobs, results)
+    }
+
+    // Send the work.
+    for i, url := range urls {
+        jobs <- Job{ID: i, URL: url}
+    }
+    close(jobs)                 // tells every worker there is no more work
+
+    // Collect exactly as many results as there were jobs.
+    for range urls {
+        r := <-results
+        if r.Err != nil {
+            log.Printf("job %d failed: %v", r.JobID, r.Err)
+            continue
+        }
+        process(r)
+    }
+}
+```
+
+Two details carry the whole thing.
+
+**Closing `jobs` ends every worker.** A `range` over a closed and drained channel exits, so all five workers return without any signal being sent to them individually.
+
+**Counting the results.** The main goroutine knows exactly how many results to expect, so it does not need `results` to be closed.
+
+## Closing results properly
+
+When the consumer wants to `range` over results rather than count them, something has to close that channel, and it cannot be any single worker.
+
+```go
+func process(urls []string, workers int) <-chan Result {
+    jobs := make(chan Job)
+    results := make(chan Result)
+
+    var wg sync.WaitGroup
+    for w := 0; w < workers; w++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for job := range jobs {
+                results <- doWork(job)
+            }
+        }()
+    }
+
+    // Feed the jobs.
+    go func() {
+        defer close(jobs)
+        for i, u := range urls {
+            jobs <- Job{ID: i, URL: u}
+        }
+    }()
+
+    // Close results once every worker has finished.
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    return results
+}
+```
+
+```go
+for r := range process(urls, 5) {
+    fmt.Println(r)
+}
+```
+
+That third goroutine is the standard idiom: wait for the group, then close. Without it, either nobody closes `results` and the consumer blocks forever, or a worker closes it and the others panic on their next send.
+
+## With cancellation
+
+Production code needs a way to stop early. Every send and receive gets a `select` on the context:
+
+```go
+func process(ctx context.Context, urls []string, workers int) (<-chan Result, error) {
+    jobs := make(chan Job)
+    results := make(chan Result)
+
+    var wg sync.WaitGroup
+    for w := 0; w < workers; w++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for {
+                select {
+                case job, ok := <-jobs:
+                    if !ok {
+                        return
+                    }
+                    select {
+                    case results <- doWork(ctx, job):
+                    case <-ctx.Done():
+                        return
+                    }
+                case <-ctx.Done():
+                    return
+                }
+            }
+        }()
+    }
+
+    go func() {
+        defer close(jobs)
+        for i, u := range urls {
+            select {
+            case jobs <- Job{ID: i, URL: u}:
+            case <-ctx.Done():
+                return
+            }
+        }
+    }()
+
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+
+    return results, nil
+}
+```
+
+Verbose, and every one of those `select` blocks is preventing a specific leak. A send that cannot complete because the consumer gave up is the most common goroutine leak in Go services.
+
+## The errgroup version
+
+`golang.org/x/sync/errgroup` collapses most of that into a few lines:
+
+```go
+func processAll(ctx context.Context, urls []string, workers int) ([]Result, error) {
+    results := make([]Result, len(urls))
+
+    g, ctx := errgroup.WithContext(ctx)
+    g.SetLimit(workers)                    // this is the pool
+
+    for i, url := range urls {
+        g.Go(func() error {
+            body, err := fetch(ctx, url)
+            if err != nil {
+                return fmt.Errorf("fetching %s: %w", url, err)
+            }
+            results[i] = Result{Body: body}
+            return nil
+        })
+    }
+
+    if err := g.Wait(); err != nil {
+        return nil, err
+    }
+    return results, nil
+}
+```
+
+`SetLimit` bounds concurrency to `workers`, so `g.Go` blocks when the limit is reached rather than starting another goroutine. Each result goes to its own index so no lock is needed. Any error cancels the derived context, which stops the rest.
+
+<Callout type="info">
+For most real work this is the version to write. It is shorter, handles errors properly, and cancels on the first failure. Write the channel-based pool by hand when you genuinely need streaming results, backpressure between stages, or workers that outlive a single batch.
+</Callout>
+
+## Choosing the number of workers
+
+The right number depends entirely on what the work is waiting for.
+
+```text
+   CPU-bound work        →  runtime.NumCPU()
+                            more workers just add scheduling overhead
+
+   I/O-bound work        →  much higher, 50 to 500 is common
+                            workers spend most of their time blocked
+
+   Rate-limited API      →  match the rate limit, not the hardware
+
+   Database queries      →  match the connection pool size
+                            more workers than connections just queue
+```
+
+```go
+workers := runtime.NumCPU()                 // CPU-bound
+workers := runtime.NumCPU() * 10            // mixed, a reasonable start
+workers := 100                              // network-bound
+```
+
+There is no formula. Start with a sensible guess, measure throughput and latency, and adjust. Doubling the workers and seeing no improvement means you have found a different bottleneck.
+
+## Semaphore instead of a pool
+
+When the work is already a list and you only need to bound concurrency, a buffered channel is simpler than a full pool:
+
+```go
+func processWithLimit(ctx context.Context, items []Item, limit int) error {
+    sem := make(chan struct{}, limit)
+    var wg sync.WaitGroup
+    var mu sync.Mutex
+    var errs []error
+
+    for _, item := range items {
+        select {
+        case sem <- struct{}{}:
+        case <-ctx.Done():
+            return ctx.Err()
+        }
+
+        wg.Add(1)
+        go func(it Item) {
+            defer wg.Done()
+            defer func() { <-sem }()
+
+            if err := handle(ctx, it); err != nil {
+                mu.Lock()
+                errs = append(errs, err)
+                mu.Unlock()
+            }
+        }(item)
+    }
+
+    wg.Wait()
+    return errors.Join(errs...)
+}
+```
+
+The buffered channel is the semaphore. Acquiring blocks when `limit` goroutines are already running.
+
+## Pipelines of pools
+
+Stages can each have their own pool, which lets you tune them independently:
+
+```text
+   fetch (50 workers)  →  parse (8 workers)  →  store (10 workers)
+        network              CPU-bound            DB pool size
+```
+
+```go
+func pipeline(ctx context.Context, urls []string) <-chan Stored {
+    fetched := fetchStage(ctx, urls, 50)
+    parsed := parseStage(ctx, fetched, runtime.NumCPU())
+    return storeStage(ctx, parsed, 10)
+}
+```
+
+Each stage reads from the previous channel and writes to its own. The channel between two stages provides backpressure automatically: if parsing is slower than fetching, the fetchers block on their sends until parsers catch up, which is exactly the behaviour you want.
+
+## Mistakes that cost you
+
+**Forgetting to close the jobs channel.** Workers block on `range` forever and the program hangs.
+
+**A worker closing the results channel.** The other workers panic on their next send.
+
+**Unbuffered results with a consumer that stops early.** Every worker blocks on a send that nobody will receive, and they all leak.
+
+**Starting one goroutine per item.** That is not a pool, and it is what the pool exists to avoid.
+
+**No context.** No way to stop, no way to time out, no way to shut down cleanly.
+
+**A shared mutex on the hot path.** If every worker locks the same mutex on every item, you have serialised the work and gained nothing. Write to distinct slice indexes, or collect through a channel.
+
+## The version to remember
+
+For most tasks, this is the whole pattern:
+
+```go
+g, ctx := errgroup.WithContext(ctx)
+g.SetLimit(workers)
+
+for _, item := range items {
+    g.Go(func() error {
+        return process(ctx, item)
+    })
+}
+
+if err := g.Wait(); err != nil {
+    return fmt.Errorf("processing failed: %w", err)
+}
+```
+
+Bounded concurrency, error propagation, cancellation on failure, and nothing to leak. Reach for the channel version when you need streaming or long-lived workers, and use this everywhere else.
+
+Next, let's look at `context` properly, since every example on this page has been leaning on it.

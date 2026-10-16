@@ -1,0 +1,90 @@
+---
+title: Async Iteration and Workers
+description: Consume values over time and move CPU-heavy work off the main thread.
+---
+
+Ordinary iteration produces values immediately. An **async iterable** can wait before producing each value. `for await...of` awaits each item and is useful for paginated data, streams, or event sources. It belongs inside an `async` function or an ES module with top-level `await`.
+
+```js title="updates.mjs"
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function* updates() {
+  for (const message of ["queued", "running", "done"]) {
+    await delay(100);
+    yield message;
+  }
+}
+
+for await (const message of updates()) {
+  console.log(message);
+}
+```
+
+Run `node updates.mjs`. The lines appear in order with a short pause. `async function*` makes an async generator; `yield` hands one value to the consumer. If the consumer stops early, the generator can clean up in a `finally` block. Awaiting inside `for await...of` makes consumption sequential. If independent requests can run together, `Promise.all()` may be faster; if each result determines the next request, sequential iteration is appropriate.
+
+## Async iterables and backpressure
+
+An async iterator returns a promise from each `next()` call. `for await...of` requests the next value only after the loop body finishes, which naturally limits how quickly that consumer asks for values. This can provide backpressure for streams: a fast producer should not overwhelm a slower consumer with unbounded queued data.
+
+If you convert an async iterable into an array, the whole sequence is retained in memory and the operation waits for every value. Prefer streaming consumption for large or unbounded sources. When breaking out of a loop early, iterators can receive a cleanup request through their `return()` method; generators can put the cleanup in `finally`.
+
+## When a worker is needed
+
+`await` frees the event loop while waiting for asynchronous operations. It does **not** make a CPU-heavy loop run elsewhere. A long calculation still blocks the browser's interface or a Node server's callbacks. Use a Web Worker in a browser or `node:worker_threads` in Node for CPU-heavy work; move data by messages and design a way to stop the work.
+
+```js title="worker.mjs"
+import { parentPort } from "node:worker_threads";
+parentPort.on("message", (limit) => {
+  let sum = 0;
+  for (let i = 0; i < limit; i += 1) sum += i;
+  parentPort.postMessage(sum);
+});
+```
+
+```js title="main.mjs"
+import { Worker } from "node:worker_threads";
+const worker = new Worker(new URL("./worker.mjs", import.meta.url));
+worker.once("message", (sum) => {
+  console.log(sum); // 45
+  worker.terminate();
+});
+worker.once("error", console.error);
+worker.postMessage(10);
+```
+
+Run `node main.mjs`. A worker has startup and communication cost, so do not create one for a tiny calculation. For ordinary file or network I/O, the asynchronous APIs are usually sufficient.
+
+## A worker in the browser
+
+The browser has Web Workers rather than `node:worker_threads`. A worker cannot read or change the page's DOM, so the page and worker exchange messages. Save these files beside an HTML page and serve them over localhost. The HTML page should load `browser-main.js` with `<script type="module" src="./browser-main.js"></script>`.
+
+```js title="browser-worker.js"
+self.addEventListener("message", (event) => {
+  const limit = event.data;
+  let sum = 0;
+  for (let i = 0; i < limit; i += 1) sum += i;
+  self.postMessage(sum);
+});
+```
+
+```js title="browser-main.js"
+const worker = new Worker("./browser-worker.js", { type: "module" });
+worker.addEventListener("message", (event) => {
+  console.log(event.data); // 45
+  worker.terminate();
+});
+worker.addEventListener("error", console.error);
+worker.postMessage(10);
+```
+
+The page sends 10, the worker calculates `0 + 1 + ... + 9`, and the page receives 45. Message passing copies ordinary data; large binary buffers can be transferred instead when copying would be expensive. Terminate workers you no longer need. Use one for CPU-heavy work, not for an ordinary `fetch()` that already waits asynchronously.
+
+**Try it:** Change the limit to 100 and predict the result. Then explain why replacing the worker with an `async` function containing the same loop would still block the main thread while it calculates.
+
+## Worker messages and lifecycle
+
+Worker messages use structured cloning by default. The clone supports many common data types but not functions or DOM nodes. Transferable objects such as `ArrayBuffer` can move ownership without copying; after transfer, the sender's buffer is detached. Validate message shape on receipt, especially when messages cross a boundary you do not fully control.
+
+Workers have startup, memory, and messaging costs. Reuse a worker for a stream of jobs when appropriate, report errors and completion explicitly, and terminate it when the owning page or task no longer needs it. Workers improve responsiveness for CPU-bound work; they do not make an algorithm more efficient by themselves.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

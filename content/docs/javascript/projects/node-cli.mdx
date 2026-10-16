@@ -1,0 +1,94 @@
+---
+title: "Project 2: Node.js Task CLI"
+description: Build a task manager with JSON persistence and useful command errors.
+---
+
+The browser project stored tasks in `localStorage`. This version works in a terminal and writes a JSON file. You will practice arguments, parsing, validation, asynchronous file I/O, and exit status. Create a folder named `task-cli` and save the following file as `task.mjs`.
+
+```js title="task.mjs"
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const file = join(process.cwd(), "tasks.json");
+const [command, ...args] = process.argv.slice(2);
+
+async function load() {
+  try {
+    const tasks = JSON.parse(await readFile(file, "utf8"));
+    if (!Array.isArray(tasks) || !tasks.every((task) =>
+      task && Number.isSafeInteger(task.id) && task.id > 0 &&
+      typeof task.title === "string" && typeof task.done === "boolean"
+    )) throw new Error("tasks.json must contain valid tasks");
+    return tasks;
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function save(tasks) {
+  await writeFile(file, `${JSON.stringify(tasks, null, 2)}\n`, "utf8");
+}
+
+function parseId(raw) {
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error("ID must be a positive integer");
+  return id;
+}
+
+async function main() {
+  const tasks = await load();
+  if (command === "add") {
+    const title = args.join(" ").trim();
+    if (!title) throw new Error("Usage: node task.mjs add <title>");
+    const id = tasks.reduce((max, task) => Math.max(max, task.id), 0) + 1;
+    if (!Number.isSafeInteger(id)) throw new Error("No task IDs available");
+    tasks.push({ id, title, done: false });
+    await save(tasks);
+    console.log(`Added task ${id}`);
+  } else if (command === "list") {
+    if (tasks.length === 0) console.log("No tasks yet");
+    for (const task of tasks) {
+      console.log(`${task.id}. [${task.done ? "x" : " "}] ${task.title}`);
+    }
+  } else if (command === "done" || command === "delete") {
+    const id = parseId(args[0]);
+    const index = tasks.findIndex((task) => task.id === id);
+    if (index === -1) throw new Error(`Task ${id} not found`);
+    if (command === "done") tasks[index].done = true;
+    else tasks.splice(index, 1);
+    await save(tasks);
+    console.log(command === "done" ? `Completed task ${id}` : `Deleted task ${id}`);
+  } else {
+    throw new Error("Usage: node task.mjs add <title> | list | done <id> | delete <id>");
+  }
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+```
+
+Run these commands in order:
+
+```bash
+node task.mjs add Read about promises
+node task.mjs add Write tests
+node task.mjs list
+node task.mjs done 1
+node task.mjs delete 2
+node task.mjs list
+```
+
+You should end with `1. [x] Read about promises`. `process.argv.slice(2)` drops the Node and script paths. `load()` treats a missing file as an empty task list, but reports malformed JSON or invalid task records instead of erasing them. `parseId()` rejects missing, fractional, and negative IDs. The next ID is one larger than the greatest **remaining** ID; deleting the highest-numbered task can cause that ID to be reused on the next add. A production system would use a persistent ID generator.
+
+`writeFile()` replaces the whole file. That is fine for this single-process learning tool, but simultaneous processes could overwrite one another. A real multi-user service needs a database or a coordinated write strategy. Also, very large task files should not be loaded fully into memory.
+
+**Check your work:** Run `done 999`, `done nope`, and `add` without a title. Each should print a useful error and exit non-zero. Open `tasks.json` to confirm it is readable JSON, then rerun `list` from the same directory.
+
+**Extend it:** Add `list --open` and `list --done`, and extract filtering into a pure function with tests. For a more robust save, write a temporary file and rename it once the write succeeds, while still considering concurrency.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

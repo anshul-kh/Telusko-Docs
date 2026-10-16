@@ -1,0 +1,58 @@
+---
+title: Streams and Process Lifecycle
+description: Move large data in chunks and shut down a server cleanly.
+---
+
+Reading a whole large file into one string may use far more memory than needed. A **stream** moves data in chunks. In Node, a readable stream produces chunks and a writable stream consumes them. `pipeline()` connects them and forwards errors so resources can be closed.
+
+```js title="copy.mjs"
+import { createReadStream, createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+
+const [source, destination] = process.argv.slice(2);
+if (!source || !destination) {
+  console.error("Usage: node copy.mjs <source> <destination>");
+  process.exitCode = 1;
+} else {
+  try {
+    await pipeline(createReadStream(source), createWriteStream(destination));
+    console.log("Copied");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+```
+
+Run `node copy.mjs input.txt output.txt` with a small test file. `pipeline()` handles **backpressure**: if the destination is slower than the source, the producer waits instead of buffering without limit. Copying an absent source shows the error path. A stream moves bytes; if you need to transform text, you must think about encoding and chunk boundaries because a multibyte character may span chunks.
+
+## Streams and backpressure
+
+A readable stream produces chunks over time; a writable stream accepts chunks. Streams let a program process data without retaining the whole file or response in memory. Backpressure communicates that a destination is slower than a source, allowing the source to slow down instead of building an unbounded queue.
+
+Use `pipeline()` to connect streams because it forwards errors and coordinates completion and cleanup. Manually wiring `data` and `write` events requires honoring the writable stream's return value and waiting for `drain`; otherwise a fast source can consume excessive memory.
+
+## Process lifecycle
+
+The `process` object exposes signals and exit information. On shutdown, stop accepting new work, finish or cancel in-flight work within a deadline, close servers and database connections, and then exit. Do not call `process.exit()` immediately after starting asynchronous cleanup; the process can terminate before that work finishes.
+
+## Stopping a server
+
+When a deployed process receives SIGTERM, it should stop accepting new requests and allow current work to finish. Given a `server` from the previous lesson:
+
+```js
+process.once("SIGTERM", () => {
+  server.close((error) => {
+    if (error) console.error(error);
+    process.exitCode = error ? 1 : 0;
+  });
+});
+```
+
+`server.close()` stops new connections and calls back when the server has closed. Real services also set a shutdown deadline and close databases or other long-lived resources. Avoid calling `process.exit()` while writes or cleanup are pending; it can cut them off. SIGINT (Ctrl+C) can use the same handler during development.
+
+**Common mistake:** An event listener left registered on a long-lived process can retain data and run unexpectedly. Register one-time shutdown listeners with `once` when they should run only once.
+
+**Try it:** Copy a file, compare its content, then run the command with a missing source. Explain why `pipeline()` is a better fit than `readFile()` for a multi-gigabyte input.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

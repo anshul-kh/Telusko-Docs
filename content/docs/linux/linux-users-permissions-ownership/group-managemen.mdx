@@ -1,0 +1,236 @@
+---
+title: Linux Group Management
+---
+
+## What Is Group Management?
+
+Linux groups allow administrators to organize users and manage shared access to files and directories.
+
+For example, suppose `dev1` and `dev2` are working on the same project. Instead of configuring access for each user individually, you can add both users to a group called `devteam` and assign the appropriate permissions to that group.
+
+This makes permission management easier, especially on shared servers.
+
+
+---
+
+
+## Creating a Group
+
+Use the `groupadd` command to create a new group.
+
+```bash
+sudo groupadd devteam
+```
+
+This creates a group named `devteam`. Administrative privileges are generally required.
+
+
+---
+
+
+## Viewing Group Details
+
+Use `getent group` to view information about a group.
+
+```bash
+getent group devteam
+```
+
+Example output:
+
+```text
+devteam:x:1004:
+```
+
+The fields represent:
+
+- `devteam`: Group name.
+- `x`: Placeholder for group password information, which is generally managed separately.
+- `1004`: Group ID (GID).
+- Empty final field: No supplementary members are listed.
+
+The actual GID depends on the system.
+
+## Adding Users to a Group
+
+Use `usermod -aG` to add an existing user to a supplementary group.
+
+```bash
+sudo usermod -aG devteam dev1
+sudo usermod -aG devteam dev2
+```
+
+Here:
+
+- `-a` means *append* the group to the user's existing supplementary groups.
+- `-G` specifies the supplementary group or groups.
+- `devteam` is the target group.
+- `dev1` and `dev2` are the users being added.
+
+**Important:** Do not omit `-a` when you intend to preserve existing supplementary group memberships. Using `-G` without `-a` can replace the user's supplementary group list.
+
+### Verify Group Membership
+
+Run:
+
+```bash
+getent group devteam
+```
+
+Example output:
+
+```text
+devteam:x:1004:dev1,dev2
+```
+
+The final field lists the supplementary members associated with the group.
+
+**Note:** A user's primary group is not necessarily listed in this final field. Use `id` to check the user's complete group membership.
+
+
+---
+
+
+## Checking a User's Groups
+
+Linux provides the `id` and `groups` commands to inspect group membership.
+
+### Using `id`
+
+```bash
+id dev1
+```
+
+Example output:
+
+```text
+uid=1001(dev1) gid=1001(dev1) groups=1001(dev1),1004(devteam)
+```
+
+This output shows the user's ID, primary group, and supplementary groups.
+
+### Using `groups`
+
+```bash
+groups dev1
+```
+
+Example output:
+
+```text
+dev1 : dev1 devteam
+```
+
+Here, `dev1` belongs to the primary group `dev1` and the supplementary group `devteam`.
+
+
+### Applying Group Membership Changes
+
+When you add a user to a group, existing login sessions may not immediately reflect the change.
+
+The user may need to log out and log back in for the updated group membership to take effect in their session. On a test system, you can also start a new session with the appropriate group membership.
+
+This is useful to remember when a user has been added to a group but still cannot access a shared resource.
+
+
+---
+
+
+## Removing a User from a Group
+
+Use `gpasswd -d` to remove a user from a supplementary group.
+
+```bash
+sudo gpasswd -d dev1 devteam
+```
+
+Verify the result:
+
+```bash
+groups dev1
+```
+
+If `dev1` has no other supplementary groups, the output may look like this:
+
+```text
+dev1 : dev1
+```
+
+The user remains in the system. Only their membership in `devteam` has been removed.
+
+**Important:** You cannot remove a user's primary group membership this way. To change a primary group, use the appropriate user-management command.
+
+
+---
+
+
+## Renaming a Group
+
+Use `groupmod -n` to change a group's name.
+
+```bash
+sudo groupmod -n dteam devteam
+```
+
+This renames `devteam` to `dteam` while retaining the group's identity and GID.
+
+Verify the change:
+
+```bash
+getent group devteam
+getent group dteam
+```
+
+The first command normally returns no result, while the second displays the renamed group.
+
+
+---
+
+
+## Deleting a Group
+
+Use `groupdel` to delete a group.
+
+```bash
+sudo groupdel dteam
+```
+
+This removes the group from the system's group database.
+
+**Important:** Linux generally does not allow you to delete a group that is the primary group of an existing user. Also, deleting a group does not delete its users or their files. Files previously associated with that GID may retain the numeric group ID, which can affect how their ownership is displayed.
+
+Before deleting a group, check whether users or files still depend on it.
+
+
+---
+
+
+## Quick Reference
+
+| Command | Purpose |
+|---|---|
+| `sudo groupadd devteam` | Create a group |
+| `getent group devteam` | View group details and listed members |
+| `sudo usermod -aG devteam dev1` | Add a user to a supplementary group |
+| `id dev1` | Display user and group IDs |
+| `groups dev1` | List a user's groups |
+| `sudo gpasswd -d dev1 devteam` | Remove a user from a supplementary group |
+| `sudo groupmod -n dteam devteam` | Rename a group |
+| `sudo groupdel dteam` | Delete a group |
+
+
+---
+
+
+## Summary
+
+- Groups simplify access management for multiple users.
+- Use `groupadd` to create groups and `usermod -aG` to add users.
+- Use `id` and `groups` to inspect group membership.
+- Use `gpasswd -d` to remove a user from a supplementary group.
+- Use `groupmod -n` to rename a group and `groupdel` to delete one.
+- Group membership alone does not grant access to every file. The relevant file or directory permissions must also allow that group to access the resource.
+
+**Remember:** Groups help organize access, while file permissions determine what group members can actually do.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>

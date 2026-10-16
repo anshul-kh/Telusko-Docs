@@ -1,0 +1,70 @@
+---
+title: Destructuring and Iteration
+description: Unpack data, use spread and rest, and implement iterable values.
+---
+
+Destructuring reads positions from an iterable or named properties from an object. Defaults apply when the extracted value is `undefined`.
+
+```js
+const [first, second = "none"] = ["red"];
+const { name, role = "learner" } = { name: "Asha" };
+console.log(first, second, name, role); // red none Asha learner
+```
+
+Spread (`...`) expands an iterable in an array or argument list, or copies enumerable own properties into an object. Rest (`...`) gathers what remains. The syntax looks alike, but its role depends on the position.
+
+```js
+const numbers = [2, 3];
+console.log(Math.max(1, ...numbers)); // 3
+const { id, ...details } = { id: 7, title: "Read", done: false };
+console.log(details); // { title: "Read", done: false }
+```
+
+An **iterable** provides a function at `Symbol.iterator` that returns an iterator. An iterator's `next()` returns `{ value, done }`. Arrays, strings, maps, and sets are iterable; plain objects are not. `for...of`, spread, and array destructuring consume iterables.
+
+```js
+function* range(start, end) {
+  for (let value = start; value < end; value += 1) yield value;
+}
+console.log([...range(2, 5)]); // [2, 3, 4]
+```
+
+`function*` creates a generator that pauses at each `yield`. Iteration is lazy: values are produced as requested. For an ordinary object, iterate `Object.entries(record)` instead of `for...of record`.
+
+## One value at a time
+
+Calling `range(2, 5)` returns a generator object; it does not immediately run the whole loop. The first `next()` resumes the function until `yield 2`, then returns `{ value: 2, done: false }`. Another `next()` resumes after that point. Spread asks for every remaining value and collects them into an array.
+
+```js
+const iterator = range(2, 4);
+console.log(iterator.next()); // { value: 2, done: false }
+console.log(iterator.next()); // { value: 3, done: false }
+console.log(iterator.next()); // { value: undefined, done: true }
+```
+
+This lazy model is useful when a sequence is large or potentially unbounded. However, `[...range(0, 1_000_000)]` still allocates a million-element array; `for...of` can process each value without keeping the whole collection.
+
+Destructuring and spread also appear in function calls. `function sum(...numbers)` gathers arguments into an array, while `sum(...values)` expands an iterable into arguments. A shallow object spread, `{ ...original }`, does not clone nested objects; the collections lesson shows why that matters.
+
+**Practice:** Write a generator `evens(limit)` that yields non-negative even numbers below `limit`, and consume it with `for...of`.
+
+**Check:** For `limit = 6`, the sequence is 0, 2, 4. Start at 0, increase by 2 each time, and stop before the limit.
+
+## Destructuring defaults
+
+Array destructuring reads values by position; object destructuring reads properties by name. A default is used when the selected value is `undefined`, not when it is `null`. Rest syntax collects the remaining values and must appear last:
+
+```js
+const [first, second = "fallback", ...rest] = ["a", undefined, "c", "d"];
+const { id, name: displayName = "Anonymous" } = { id: 7 };
+```
+
+Destructuring is convenient for function parameters and imported values, but deeply nested patterns can obscure where a value came from. Use a clear intermediate variable when it improves readability. Destructuring an absent object throws; provide a fallback object only when absence truly means “use defaults.”
+
+## Iterators and generators
+
+An iterable provides a `Symbol.iterator` method that returns an iterator. Each call to `next()` returns an object with `value` and `done`. Arrays, strings, maps, and sets are iterable, which is why they work with `for...of`, spread syntax, and array destructuring. Plain objects are not iterable by default; use `Object.entries()` to iterate their own enumerable key/value pairs.
+
+A generator function (`function*`) creates an iterator whose execution pauses at each `yield`. This lets it produce a sequence lazily, which can avoid allocating a large array. Generators can also receive values and return a final value, though simple value production is the common use. Make sure a generator terminates when its consumer expects a finite sequence.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

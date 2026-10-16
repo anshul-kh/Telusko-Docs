@@ -1,0 +1,65 @@
+---
+title: Numbers and BigInt
+description: Understand floating-point limits, parsing, integer safety, and exact large integers.
+---
+
+Most JavaScript arithmetic uses the `number` type. It follows the IEEE 754 double-precision format, which represents many integers exactly but approximates most decimal fractions. This is why a calculation that looks simple on paper can surprise you in code:
+
+```js
+console.log(0.1 + 0.2); // 0.30000000000000004
+console.log(Number.isSafeInteger(2 ** 53 - 1)); // true
+console.log(Number.isSafeInteger(2 ** 53)); // false
+```
+
+The first result is a representation issue, not evidence that JavaScript cannot add. For a money amount in one currency, storing the smallest unit as an integer often avoids this class of error: 1050 cents instead of 10.50 dollars. For financial rules involving multiple currencies or arbitrary precision, choose a decimal arithmetic approach with explicitly defined rounding.
+
+## Parsing and checking
+
+`Number("12.5")` converts the whole string. `Number("12px")` is `NaN`; `parseFloat("12px")` returns 12 because it stops at the first invalid character. That lenience may be useful for CSS-like input but is dangerous for strict validation. `Number.isNaN(value)` tests the special not-a-number value without coercing other types. `Number.isFinite(value)` rejects `NaN` and infinities.
+
+```js
+const raw = "12.5";
+const amount = Number(raw);
+if (raw.trim() === "" || !Number.isFinite(amount)) {
+  throw new Error("Enter a valid amount");
+}
+console.log(Math.round(amount)); // 13
+```
+
+`Math.floor()` rounds downward, `Math.ceil()` upward, `Math.round()` to the nearest integer, and `Math.trunc()` removes the fractional part. Negative numbers expose the difference: `Math.floor(-1.7)` is -2 while `Math.trunc(-1.7)` is -1. `Math.random()` is for non-security-sensitive randomness, not passwords or tokens; browser and Node cryptographic APIs supply secure randomness.
+
+## BigInt
+
+`bigint` stores integers beyond the safe range of `number`:
+
+```js
+const large = 9_007_199_254_740_993n;
+console.log(large + 1n); // 9007199254740994n
+// large + 1; // TypeError: number and bigint cannot be mixed
+console.log(Number(7n)); // 7, safe for this small value
+```
+
+The `n` suffix creates a BigInt. Arithmetic with BigInt uses other BigInts; division truncates toward zero. Converting a huge BigInt to `number` can lose precision, and `JSON.stringify()` cannot serialize BigInt directly. Choose a string representation when exchanging very large integers as JSON.
+
+**Try it:** Calculate `10 / 3` and `10n / 3n`, then compare their results. Parse `"12px"` with both `Number()` and `parseFloat()` and decide which behavior a price input should use.
+
+## Precision and rounding
+
+`Number` can represent integers exactly only through `Number.MAX_SAFE_INTEGER` and down to its negative counterpart. Beyond that, two distinct mathematical integers can become the same JavaScript number. Use `Number.isSafeInteger()` before relying on exact integer identity, such as for database IDs or counters that may grow very large.
+
+Binary floating point cannot represent most decimal fractions exactly. Comparing a computed decimal directly to an expected decimal can therefore fail. For measurement calculations, choose a tolerance appropriate to the domain; for money, store minor units as integers or use a decimal library with a documented rounding rule.
+
+```js
+const closeEnough = (actual, expected, tolerance = 1e-10) =>
+  Math.abs(actual - expected) <= tolerance;
+
+console.log(closeEnough(0.1 + 0.2, 0.3)); // true
+```
+
+Do not use one tolerance for every problem: scientific measurements, pixels, and currency have different acceptable precision. Also note that `Math.round()` rounds halfway cases toward positive infinity, so negative halfway values may surprise you. Define a rounding policy when results have business meaning.
+
+## Parsing is not validation by itself
+
+`Number()` rejects trailing text by returning `NaN`, but it accepts forms such as whitespace-only strings as zero. Validate the original string as well as the converted value. For an integer field, check `Number.isInteger()` and any domain range. For a BigInt, parse a decimal string with `BigInt()` and catch invalid input; do not convert through `Number()` first or precision may already be lost.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

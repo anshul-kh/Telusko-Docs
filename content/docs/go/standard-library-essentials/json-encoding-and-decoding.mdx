@@ -1,0 +1,373 @@
+---
+title: JSON Encoding and Decoding
+---
+
+`encoding/json` maps Go structs to JSON and back using reflection and struct tags. The basics take five minutes. The parts worth real attention are the tag options, the difference between zero and absent, and the streaming API that most people never discover.
+
+## Marshal and Unmarshal
+
+```go
+type User struct {
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+u := User{ID: 1, Name: "Shiva", Email: "shiva@example.com"}
+
+data, err := json.Marshal(u)
+fmt.Println(string(data))
+// {"id":1,"name":"Shiva","email":"shiva@example.com"}
+
+pretty, err := json.MarshalIndent(u, "", "  ")
+```
+
+```go
+var u User
+err := json.Unmarshal(data, &u)      // note the pointer
+```
+
+`Unmarshal` needs a pointer, because it has to write into the value you gave it. Passing the value itself compiles and silently does nothing useful.
+
+## Struct tags
+
+```go
+type Product struct {
+    ID          int      `json:"id"`
+    Name        string   `json:"name"`
+    Price       float64  `json:"price"`
+    Description string   `json:"description,omitempty"`
+    Tags        []string `json:"tags,omitempty"`
+    internalSKU string                              // unexported, never marshalled
+    Secret      string   `json:"-"`                 // exported but excluded
+    Count       int      `json:"count,string"`      // encoded as a JSON string
+}
+```
+
+| Tag | Effect |
+| --- | --- |
+| `json:"name"` | use this key instead of the field name |
+| `json:"-"` | never marshal or unmarshal this field |
+| `json:",omitempty"` | omit when the value is its zero value |
+| `json:",string"` | encode a number or bool as a JSON string |
+| no tag | use the exact field name, capital included |
+
+<Callout type="warn">
+Only **exported** fields are marshalled. Reflection cannot see unexported ones, so they are silently skipped with no error and no warning. A struct that produces `{}` almost always has lowercase field names.
+</Callout>
+
+### omitempty and what counts as empty
+
+```text
+   empty:      false, 0, "", nil pointer, nil interface,
+               empty array, slice, map, or string
+
+   NOT empty:  a zero-valued struct, a zero time.Time
+```
+
+That last line surprises people. `omitempty` does nothing for a struct field, so an empty nested struct still appears in the output. Use a pointer if you need it omitted.
+
+Go 1.24 added `omitzero`, which handles the struct case properly:
+
+```go
+type Event struct {
+    Name string    `json:"name"`
+    At   time.Time `json:"at,omitzero"`     // omitted when it is the zero time
+}
+```
+
+## Zero versus absent
+
+The classic JSON problem: how do you tell `{"active": false}` from `{}`?
+
+```go
+type Settings struct {
+    Active  bool `json:"active"`
+}
+```
+
+Both inputs produce `Active: false`, and there is no way to distinguish them. Three solutions, in order of preference for most situations:
+
+```go
+// 1. A pointer. nil means the field was absent.
+type Settings struct {
+    Active *bool `json:"active"`
+}
+
+if s.Active != nil && *s.Active {
+    enable()
+}
+```
+
+```go
+// 2. json.RawMessage, when you need to know without decoding yet
+type Patch struct {
+    Name json.RawMessage `json:"name"`
+}
+if p.Name != nil {
+    // the key was present, possibly as null
+}
+```
+
+```go
+// 3. Decode into a map first, for a PATCH endpoint
+var fields map[string]json.RawMessage
+json.Unmarshal(body, &fields)
+if raw, ok := fields["name"]; ok {
+    // the client explicitly sent "name"
+}
+```
+
+The pointer form is the usual answer for PATCH request bodies and optional configuration. It costs a nil check at every use, which is why you should not apply it to every field by default.
+
+## Nested and embedded structs
+
+```go
+type Address struct {
+    City string `json:"city"`
+    Pin  string `json:"pin"`
+}
+
+type Customer struct {
+    Name    string   `json:"name"`
+    Billing Address  `json:"billing"`
+    Shipping *Address `json:"shipping,omitempty"`
+}
+```
+
+```json
+{
+  "name": "Shiva",
+  "billing": {"city": "Bengaluru", "pin": "560001"}
+}
+```
+
+Embedded structs are **flattened**, which is often exactly what you want:
+
+```go
+type Base struct {
+    ID        string    `json:"id"`
+    CreatedAt time.Time `json:"created_at"`
+}
+
+type Article struct {
+    Base
+    Title string `json:"title"`
+}
+```
+
+```json
+{"id": "a1", "created_at": "2026-08-08T10:00:00Z", "title": "Learning Go"}
+```
+
+## Decoding unknown shapes
+
+When the structure is not known in advance, decode into `any` and type switch:
+
+```go
+var data any
+json.Unmarshal(raw, &data)
+
+switch v := data.(type) {
+case map[string]any:
+    for key, value := range v {
+        fmt.Println(key, value)
+    }
+case []any:
+    fmt.Println("array of", len(v))
+}
+```
+
+The mapping JSON uses when decoding into `any`:
+
+```text
+   JSON object   →  map[string]any
+   JSON array    →  []any
+   JSON string   →  string
+   JSON number   →  float64          ← every number, including integers
+   JSON true     →  bool
+   JSON null     →  nil
+```
+
+<Callout type="warn">
+Every JSON number becomes a `float64`, which loses precision above 2^53 and turns integer IDs into scientific notation when re-encoded. For large integers, use `json.Decoder` with `UseNumber()`:
+
+```go
+dec := json.NewDecoder(r)
+dec.UseNumber()
+```
+
+Numbers then arrive as `json.Number`, a string you can convert with `Int64()` or `Float64()` without losing anything.
+</Callout>
+
+## Streaming with Decoder and Encoder
+
+For anything reading from or writing to a stream, use these instead of `Marshal` and `Unmarshal`. They avoid buffering the whole document in memory.
+
+```go
+// Decode an HTTP request body
+func handler(w http.ResponseWriter, r *http.Request) {
+    var req CreateUserRequest
+
+    dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+    dec.DisallowUnknownFields()
+
+    if err := dec.Decode(&req); err != nil {
+        http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+        return
+    }
+
+    // ...
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
+}
+```
+
+Two things there are worth adopting as habits.
+
+`http.MaxBytesReader` caps the body size. Without it, a client can send an unbounded stream and exhaust your memory.
+
+`DisallowUnknownFields` turns a typo in a client's request into a clear 400 rather than a silently ignored field. Whether you want it depends on your API's compatibility policy, and for internal APIs it catches a lot of mistakes.
+
+Streaming many documents:
+
+```go
+dec := json.NewDecoder(file)
+for {
+    var record Record
+    if err := dec.Decode(&record); err == io.EOF {
+        break
+    } else if err != nil {
+        return fmt.Errorf("decoding record: %w", err)
+    }
+    process(record)
+}
+```
+
+Handles a newline-delimited JSON file of any size with constant memory.
+
+## Custom marshalling
+
+Implement `MarshalJSON` and `UnmarshalJSON` to control the representation of a type.
+
+```go
+type Money struct {
+    Paise    int64
+    Currency string
+}
+
+func (m Money) MarshalJSON() ([]byte, error) {
+    return json.Marshal(struct {
+        Amount   string `json:"amount"`
+        Currency string `json:"currency"`
+    }{
+        Amount:   fmt.Sprintf("%d.%02d", m.Paise/100, m.Paise%100),
+        Currency: m.Currency,
+    })
+}
+
+func (m *Money) UnmarshalJSON(data []byte) error {
+    var aux struct {
+        Amount   string `json:"amount"`
+        Currency string `json:"currency"`
+    }
+    if err := json.Unmarshal(data, &aux); err != nil {
+        return err
+    }
+
+    f, err := strconv.ParseFloat(aux.Amount, 64)
+    if err != nil {
+        return fmt.Errorf("invalid amount %q: %w", aux.Amount, err)
+    }
+
+    m.Paise = int64(math.Round(f * 100))
+    m.Currency = aux.Currency
+    return nil
+}
+```
+
+<Callout type="warn">
+Never call `json.Marshal` on the same type inside its own `MarshalJSON`. It calls your method again and recurses until the stack overflows. Marshal an anonymous struct or a type alias instead, as above.
+</Callout>
+
+The type alias trick, for when you only want to add a field:
+
+```go
+func (u User) MarshalJSON() ([]byte, error) {
+    type alias User            // no methods, so no recursion
+    return json.Marshal(struct {
+        alias
+        DisplayName string `json:"display_name"`
+    }{
+        alias:       alias(u),
+        DisplayName: u.FirstName + " " + u.LastName,
+    })
+}
+```
+
+## Validating after decoding
+
+JSON decoding does not validate. It fills in what is present and leaves the rest at its zero value, so a request missing every field decodes successfully into an empty struct.
+
+```go
+type CreateUserRequest struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+    Age   int    `json:"age"`
+}
+
+func (r CreateUserRequest) Validate() error {
+    var errs []error
+
+    if strings.TrimSpace(r.Name) == "" {
+        errs = append(errs, errors.New("name is required"))
+    }
+    if !strings.Contains(r.Email, "@") {
+        errs = append(errs, fmt.Errorf("invalid email %q", r.Email))
+    }
+    if r.Age < 13 || r.Age > 150 {
+        errs = append(errs, fmt.Errorf("age %d is out of range", r.Age))
+    }
+
+    return errors.Join(errs...)
+}
+```
+
+Decode, then validate, always. Treating a successful `Decode` as a valid request is one of the most common mistakes in Go API code.
+
+## Errors worth recognising
+
+```go
+var syntaxErr *json.SyntaxError
+var typeErr *json.UnmarshalTypeError
+
+switch {
+case errors.As(err, &syntaxErr):
+    return fmt.Errorf("malformed JSON at byte %d", syntaxErr.Offset)
+
+case errors.As(err, &typeErr):
+    return fmt.Errorf("field %q: expected %s, got %s",
+        typeErr.Field, typeErr.Type, typeErr.Value)
+
+case errors.Is(err, io.EOF):
+    return errors.New("request body is empty")
+}
+```
+
+Turning `json: cannot unmarshal string into Go struct field User.age of type int` into `field "age": expected int, got string` is a small effort that makes an API noticeably more pleasant to integrate with.
+
+## Performance notes
+
+`encoding/json` uses reflection, which makes it flexible and not especially fast. For most services it is nowhere near the bottleneck, and reaching for an alternative before profiling is misplaced effort.
+
+When it genuinely is the bottleneck:
+
+- Reuse `Decoder` and `Encoder` rather than calling `Marshal` per item
+- Avoid decoding into `map[string]any`, which allocates heavily
+- `github.com/goccy/go-json` and `github.com/bytedance/sonic` are drop-in replacements that are considerably faster
+- `easyjson` and similar generate marshalling code, removing reflection entirely
+
+Go 1.25 introduced an experimental `encoding/json/v2` with substantially better performance and cleaner semantics, enabled with `GOEXPERIMENT=jsonv2`. Worth watching, and not yet something to build on.
+
+That completes the standard library tour. Next, let's use all of it to build an actual HTTP service.

@@ -1,0 +1,400 @@
+---
+title: WaitGroups and Mutexes
+---
+
+Channels are for passing data between goroutines. The `sync` package is for the other half of concurrency: waiting for goroutines to finish, and protecting state that several of them touch.
+
+Go's own guidance is unusually direct about the split. Use channels to communicate, use `sync` to protect. Trying to build a mutex out of a channel produces something slower and harder to read than the mutex.
+
+## sync.WaitGroup
+
+A counter that lets one goroutine wait for a group of others.
+
+```go
+func main() {
+    var wg sync.WaitGroup
+
+    for i := 1; i <= 3; i++ {
+        wg.Add(1)
+
+        go func() {
+            defer wg.Done()
+            fmt.Printf("worker %d\n", i)
+            time.Sleep(time.Second)
+        }()
+    }
+
+    wg.Wait()
+    fmt.Println("all done")
+}
+```
+
+Three methods, and the rules that go with them:
+
+```text
+   Add(n)    increase the counter, BEFORE starting the goroutine
+   Done()    decrease by one, ALWAYS via defer
+   Wait()    block until the counter reaches zero
+```
+
+### Add before the go statement
+
+```go
+// Wrong: Wait may run before Add
+for i := 0; i < 3; i++ {
+    go func() {
+        wg.Add(1)              // race with Wait
+        defer wg.Done()
+    }()
+}
+wg.Wait()
+
+// Right
+for i := 0; i < 3; i++ {
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+    }()
+}
+wg.Wait()
+```
+
+If `Wait` observes a zero counter before any goroutine has managed to `Add`, it returns immediately and the program continues while work is still running.
+
+### Done in a defer
+
+```go
+go func() {
+    defer wg.Done()            // runs even on panic or early return
+    if err := work(); err != nil {
+        return                 // still calls Done
+    }
+}()
+```
+
+A `Done` at the end of the function body is skipped by every early return and by any panic, which leaves `Wait` blocked forever.
+
+### Do not copy a WaitGroup
+
+```go
+func process(wg sync.WaitGroup) { }      // copies it, the original never sees Done
+func process(wg *sync.WaitGroup) { }     // correct
+```
+
+`go vet` catches this with "passes lock by value". Same rule as mutexes, and the same reason.
+
+### Collecting results
+
+```go
+func fetchAll(urls []string) []Result {
+    results := make([]Result, len(urls))
+    var wg sync.WaitGroup
+
+    for i, url := range urls {
+        wg.Add(1)
+        go func(i int, url string) {
+            defer wg.Done()
+            results[i] = fetch(url)      // distinct index per goroutine, no lock needed
+        }(i, url)
+    }
+
+    wg.Wait()
+    return results
+}
+```
+
+Writing to distinct indexes of a slice from different goroutines is safe. The slice header is not modified, and no two goroutines touch the same element. This is a genuinely useful pattern and it avoids both a mutex and a channel.
+
+## errgroup, the better WaitGroup
+
+`golang.org/x/sync/errgroup` is a WaitGroup that also collects the first error and cancels the rest.
+
+```bash
+go get golang.org/x/sync/errgroup
+```
+
+```go
+func fetchAll(ctx context.Context, urls []string) ([]Result, error) {
+    results := make([]Result, len(urls))
+
+    g, ctx := errgroup.WithContext(ctx)
+    g.SetLimit(10)                          // at most 10 concurrent
+
+    for i, url := range urls {
+        g.Go(func() error {
+            r, err := fetch(ctx, url)
+            if err != nil {
+                return fmt.Errorf("fetching %s: %w", url, err)
+            }
+            results[i] = r
+            return nil
+        })
+    }
+
+    if err := g.Wait(); err != nil {
+        return nil, err
+    }
+    return results, nil
+}
+```
+
+Three things this gives you over a plain WaitGroup: the first error is returned, the derived context is cancelled when any goroutine fails so the others stop early, and `SetLimit` bounds concurrency without a semaphore.
+
+For any concurrent operation that can fail, this is the tool to reach for.
+
+## sync.Mutex
+
+Mutual exclusion. One goroutine holds the lock at a time.
+
+```go
+type Counter struct {
+    mu    sync.Mutex
+    count int
+}
+
+func (c *Counter) Inc() {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.count++
+}
+
+func (c *Counter) Value() int {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    return c.count
+}
+```
+
+Without the lock, `c.count++` is three operations, read, add, store, and two goroutines interleaving them lose increments.
+
+### The rules
+
+**Always unlock with defer.** An early return or a panic between `Lock` and a plain `Unlock` leaves the mutex held forever, and every other goroutine blocks.
+
+```go
+func (c *Counter) IncIfBelow(limit int) error {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    if c.count >= limit {
+        return errLimit          // the defer still unlocks
+    }
+    c.count++
+    return nil
+}
+```
+
+**Guard the field, not the type.** Put the mutex immediately above what it protects, and say so:
+
+```go
+type Server struct {
+    mu    sync.Mutex           // guards conns
+    conns map[string]*Conn
+
+    addr string               // immutable after construction, no lock needed
+}
+```
+
+**Never copy a locked mutex.** Use pointer receivers on any type containing one.
+
+**Keep the critical section small.** Do not hold a lock across I/O:
+
+```go
+// Bad: holds the lock for the whole HTTP call
+func (c *Cache) Fetch(key string) ([]byte, error) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    if v, ok := c.data[key]; ok {
+        return v, nil
+    }
+    v, err := http.Get(key)     // every other goroutine waits on the network
+    // ...
+}
+
+// Better: lock only around the map access
+func (c *Cache) Fetch(key string) ([]byte, error) {
+    c.mu.RLock()
+    v, ok := c.data[key]
+    c.mu.RUnlock()
+    if ok {
+        return v, nil
+    }
+
+    v, err := fetchRemote(key)
+    if err != nil {
+        return nil, err
+    }
+
+    c.mu.Lock()
+    c.data[key] = v
+    c.mu.Unlock()
+    return v, nil
+}
+```
+
+<Callout type="warn">
+Go's mutexes are **not reentrant**. A goroutine that already holds a lock and calls `Lock` again on the same mutex deadlocks against itself. This bites when one locked method calls another locked method on the same type. The fix is an unexported helper that assumes the lock is already held:
+
+```go
+func (c *Cache) Set(k string, v []byte) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.setLocked(k, v)
+}
+
+func (c *Cache) setLocked(k string, v []byte) {    // caller must hold c.mu
+    c.data[k] = v
+}
+```
+</Callout>
+
+## sync.RWMutex
+
+When reads greatly outnumber writes, a read-write mutex lets any number of readers proceed together and blocks them only for a write.
+
+```go
+type Config struct {
+    mu       sync.RWMutex
+    settings map[string]string
+}
+
+func (c *Config) Get(key string) string {
+    c.mu.RLock()                  // many readers at once
+    defer c.mu.RUnlock()
+    return c.settings[key]
+}
+
+func (c *Config) Set(key, value string) {
+    c.mu.Lock()                   // exclusive
+    defer c.mu.Unlock()
+    c.settings[key] = value
+}
+```
+
+`RWMutex` is not automatically faster. It has more bookkeeping than a plain `Mutex`, so for a workload with frequent writes or very short critical sections, the simple mutex wins. Use `RWMutex` when reads dominate by a wide margin and the read work is not trivial, and benchmark if it matters.
+
+## sync.Once
+
+Runs a function exactly once, no matter how many goroutines reach it.
+
+```go
+type Client struct {
+    once sync.Once
+    conn *grpc.ClientConn
+    err  error
+}
+
+func (c *Client) connect() error {
+    c.once.Do(func() {
+        c.conn, c.err = grpc.Dial(c.addr)
+    })
+    return c.err
+}
+```
+
+Every caller after the first blocks until the first has finished, then returns. This is how lazy initialisation is done safely.
+
+```go
+var (
+    instance *Database
+    once     sync.Once
+)
+
+func GetDB() *Database {
+    once.Do(func() {
+        instance = connectToDatabase()
+    })
+    return instance
+}
+```
+
+Go 1.21 added convenience wrappers that read better:
+
+```go
+var getDB = sync.OnceValue(func() *Database {
+    return connectToDatabase()
+})
+
+db := getDB()      // initialised on the first call only
+```
+
+There is also `sync.OnceValues` for a pair, which suits the value plus error shape.
+
+## sync/atomic
+
+For a single value, atomic operations beat a mutex substantially.
+
+```go
+import "sync/atomic"
+
+type Stats struct {
+    requests atomic.Int64
+    errors   atomic.Int64
+}
+
+func (s *Stats) RecordRequest()  { s.requests.Add(1) }
+func (s *Stats) RecordError()    { s.errors.Add(1) }
+func (s *Stats) Requests() int64 { return s.requests.Load() }
+```
+
+The typed atomics, added in Go 1.19, are the modern form. They are harder to misuse than the older `atomic.AddInt64(&n, 1)` style because the type itself enforces atomic access.
+
+```go
+var (
+    counter  atomic.Int64
+    enabled  atomic.Bool
+    current  atomic.Pointer[Config]
+)
+
+counter.Add(1)
+counter.Store(0)
+n := counter.Load()
+ok := counter.CompareAndSwap(5, 10)      // set to 10 only if it is currently 5
+
+enabled.Store(true)
+current.Store(&newConfig)                // hot-swap a config pointer
+cfg := current.Load()
+```
+
+Atomics only work for single values. The moment you need two fields to change together, you need a mutex.
+
+## sync.Map
+
+A map optimised for two specific patterns: keys written once and read many times, or goroutines working on disjoint key sets.
+
+```go
+var cache sync.Map
+
+cache.Store("key", value)
+v, ok := cache.Load("key")
+v, loaded := cache.LoadOrStore("key", defaultValue)
+cache.Delete("key")
+
+cache.Range(func(k, v any) bool {
+    fmt.Println(k, v)
+    return true          // false stops the iteration
+})
+```
+
+<Callout type="warn">
+For general use, `sync.Map` is **slower** than a plain map with a mutex, and it loses type safety because keys and values are `any`. Reach for it only when a profile shows lock contention on a map that matches one of its two intended patterns. Most codebases never need it.
+</Callout>
+
+## Choosing a tool
+
+```text
+   Wait for N goroutines to finish            →  sync.WaitGroup
+   Wait, and collect the first error          →  errgroup.Group
+   Protect a struct or map                    →  sync.Mutex
+   Protect something read far more than written →  sync.RWMutex
+   Initialise once, lazily                    →  sync.Once or sync.OnceValue
+   A counter or flag                          →  sync/atomic
+   Hand data between goroutines               →  a channel
+   Signal an event                            →  close(chan struct{})
+   Bound concurrency                          →  buffered channel, or errgroup.SetLimit
+```
+
+The two mistakes worth avoiding: building a mutex out of a channel, and building a queue out of a mutex. Each tool has a shape, and using the wrong one produces code that works but reads as unfamiliar to every Go programmer who sees it.
+
+Next, let's put channels and WaitGroups together into the pattern you will use most often in real services.

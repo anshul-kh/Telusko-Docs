@@ -1,0 +1,331 @@
+---
+title: Time and Durations
+---
+
+```go
+t.Format("2006-01-02 15:04:05")
+```
+
+That is not an example date. It is Go's format string, and every newcomer stops at it. Instead of `YYYY-MM-DD`, Go uses a specific reference time and asks you to write it in the layout you want.
+
+The reference is January 2, 2006, at 3:04:05 PM, in timezone UTC-7. Which is:
+
+```text
+   01/02 03:04:05PM '06 -0700
+   1  2  3  4  5     6  7
+```
+
+Month 1, day 2, hour 3, minute 4, second 5, year 6, zone 7. Once you see the counting, it stops being arbitrary. Whether it is better than `YYYY-MM-DD` is a matter of opinion, and either way it is what Go does.
+
+## The layouts you will use
+
+Most of the time you do not write a layout at all, because the common ones are constants:
+
+```go
+time.RFC3339         // "2006-01-02T15:04:05Z07:00"  APIs and JSON
+time.RFC3339Nano     // with nanoseconds
+time.RFC1123         // "Mon, 02 Jan 2006 15:04:05 MST"  HTTP headers
+time.Kitchen         // "3:04PM"
+time.DateOnly        // "2006-01-02"       Go 1.20+
+time.TimeOnly        // "15:04:05"         Go 1.20+
+time.DateTime        // "2006-01-02 15:04:05"
+```
+
+```go
+now := time.Now()
+
+now.Format(time.RFC3339)          // 2026-08-08T10:30:00+05:30
+now.Format(time.DateOnly)         // 2026-08-08
+now.Format("02 Jan 2006")         // 08 Aug 2026
+now.Format("Monday, 2 January")   // Saturday, 8 August
+now.Format("15:04")               // 10:30, 24 hour
+now.Format("03:04 PM")            // 10:30 AM, 12 hour
+```
+
+<Callout type="info">
+`15` means 24 hour and `03` means 12 hour, because the reference hour is 3 PM which is 15:00. Padding follows the reference too: `02` is zero padded, `2` is not, and `_2` is space padded.
+</Callout>
+
+## Parsing
+
+```go
+t, err := time.Parse(time.RFC3339, "2026-08-08T10:30:00Z")
+t, err := time.Parse(time.DateOnly, "2026-08-08")
+t, err := time.Parse("02/01/2006", "08/08/2026")
+```
+
+`Parse` assumes UTC when the input has no zone. To interpret it in a specific location, use `ParseInLocation`:
+
+```go
+loc, _ := time.LoadLocation("Asia/Kolkata")
+t, err := time.ParseInLocation(time.DateOnly, "2026-08-08", loc)
+```
+
+This distinction matters. A date submitted by a user in Mumbai means midnight IST, not midnight UTC, and the difference is five and a half hours of wrong.
+
+## Duration
+
+A `time.Duration` is an `int64` count of nanoseconds, with a named type so the units are unambiguous.
+
+```go
+time.Nanosecond
+time.Microsecond
+time.Millisecond
+time.Second
+time.Minute
+time.Hour
+```
+
+```go
+d := 90 * time.Second
+fmt.Println(d)                    // 1m30s, the String method
+fmt.Println(d.Seconds())          // 90
+fmt.Println(d.Minutes())          // 1.5
+
+d, _ := time.ParseDuration("1h30m")
+d, _ := time.ParseDuration("250ms")
+```
+
+The multiplication only works because `90` is an untyped constant that adopts `time.Duration`. With a variable it does not:
+
+```go
+n := 90
+d := n * time.Second                 // compile error
+d := time.Duration(n) * time.Second  // correct
+```
+
+This trips up everyone once, and the reason is the untyped constant rule from the variables section.
+
+There is no day or week unit, deliberately, because a day is not always 24 hours once daylight saving is involved. Express those as hours, or use `AddDate` for calendar arithmetic.
+
+## Arithmetic
+
+```go
+now := time.Now()
+
+later := now.Add(2 * time.Hour)
+earlier := now.Add(-30 * time.Minute)
+
+// Calendar arithmetic: years, months, days
+nextMonth := now.AddDate(0, 1, 0)
+lastYear := now.AddDate(-1, 0, 0)
+tomorrow := now.AddDate(0, 0, 1)
+
+// The difference between two times is a Duration
+elapsed := later.Sub(now)         // 2h0m0s
+elapsed := time.Since(start)      // shorthand for Now().Sub(start)
+remaining := time.Until(deadline) // shorthand for deadline.Sub(Now())
+```
+
+`AddDate` and `Add` are genuinely different. `Add(24 * time.Hour)` adds exactly 24 hours. `AddDate(0, 0, 1)` moves to the same clock time tomorrow, which may be 23 or 25 hours later across a daylight saving boundary.
+
+```go
+// The timing pattern you will use constantly
+start := time.Now()
+doWork()
+slog.Info("completed", "duration", time.Since(start))
+```
+
+## Comparison
+
+```go
+a.Before(b)
+a.After(b)
+a.Equal(b)          // use this, NOT ==
+```
+
+<Callout type="warn">
+Never compare times with `==`. A `time.Time` contains a wall clock reading, a monotonic clock reading, and a location pointer. Two times representing the same instant can differ in all three and compare unequal. `Equal` compares the instant, which is what you meant.
+</Callout>
+
+```go
+if deadline.Before(time.Now()) {
+    return errors.New("expired")
+}
+
+if !expiry.After(time.Now()) {     // expired or expiring right now
+    return errors.New("expired")
+}
+```
+
+## Timezones
+
+```go
+loc, err := time.LoadLocation("Asia/Kolkata")
+if err != nil {
+    return fmt.Errorf("unknown timezone: %w", err)
+}
+
+t := time.Now().In(loc)
+fmt.Println(t.Format(time.RFC3339))     // 2026-08-08T16:00:00+05:30
+
+utc := t.UTC()
+local := t.Local()
+```
+
+`LoadLocation` reads the IANA timezone database, which comes from the operating system. Alpine-based containers frequently do not have it, and `LoadLocation` fails at runtime with a confusing error. Two fixes:
+
+```dockerfile
+RUN apk add --no-cache tzdata
+```
+
+```go
+import _ "time/tzdata"     // embeds the database in your binary, ~450 KB
+```
+
+The import is the more reliable option for containers.
+
+<Callout type="info">
+The rule that avoids most timezone bugs: **store UTC, display local**. Database columns, log timestamps, and API payloads should all be UTC. Convert to the user's timezone only at the moment of rendering. Mixing zones in storage produces bugs that surface twice a year.
+</Callout>
+
+## Truncation and rounding
+
+```go
+now := time.Now()
+
+now.Truncate(time.Hour)       // the start of the current hour
+now.Truncate(24 * time.Hour)  // midnight UTC, not local midnight
+now.Round(time.Minute)        // to the nearest minute
+```
+
+For the start of a local day, construct it rather than truncating:
+
+```go
+y, m, d := now.Date()
+startOfDay := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+```
+
+`Truncate` works on the absolute time since the zero instant, so it does not respect timezone offsets that are not whole hours. India's UTC+5:30 makes this immediately visible.
+
+## Timers and tickers
+
+```go
+// Fire once
+timer := time.NewTimer(5 * time.Second)
+defer timer.Stop()
+<-timer.C
+
+// Fire repeatedly
+ticker := time.NewTicker(30 * time.Second)
+defer ticker.Stop()
+for range ticker.C {
+    collectMetrics()
+}
+
+// Sleep, only where a goroutine really should pause
+time.Sleep(100 * time.Millisecond)
+
+// Run a function later, on its own goroutine
+time.AfterFunc(time.Minute, func() {
+    slog.Info("a minute has passed")
+})
+```
+
+A ticker that is never stopped leaks its goroutine and its timer. `defer ticker.Stop()` on the line after creating it is the habit.
+
+In a `select`, the standard timeout shape:
+
+```go
+select {
+case result := <-work:
+    return result, nil
+case <-time.After(3 * time.Second):
+    return nil, errors.New("timed out")
+}
+```
+
+`time.After` allocates a timer that lives until it fires. In a tight loop those accumulate, so use `NewTimer` and stop it, or better, use a context deadline which cancels everything downstream too.
+
+## Testing time-dependent code
+
+Code that calls `time.Now()` directly is difficult to test. Inject a clock instead:
+
+```go
+type Clock interface {
+    Now() time.Time
+}
+
+type realClock struct{}
+func (realClock) Now() time.Time { return time.Now() }
+
+type fakeClock struct{ t time.Time }
+func (f *fakeClock) Now() time.Time  { return f.t }
+func (f *fakeClock) Advance(d time.Duration) { f.t = f.t.Add(d) }
+```
+
+```go
+type TokenService struct {
+    clock Clock
+    ttl   time.Duration
+}
+
+func (s *TokenService) IsExpired(t Token) bool {
+    return s.clock.Now().After(t.IssuedAt.Add(s.ttl))
+}
+```
+
+```go
+func TestTokenExpiry(t *testing.T) {
+    clock := &fakeClock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+    svc := &TokenService{clock: clock, ttl: time.Hour}
+    token := Token{IssuedAt: clock.Now()}
+
+    if svc.IsExpired(token) {
+        t.Error("token should be valid immediately after issue")
+    }
+
+    clock.Advance(2 * time.Hour)
+
+    if !svc.IsExpired(token) {
+        t.Error("token should be expired after two hours")
+    }
+}
+```
+
+Two hours pass instantly and the test is deterministic. A one-method interface buying a large amount of testability, which is the pattern from the interfaces section in its most useful form.
+
+## Times in JSON and databases
+
+`time.Time` marshals to RFC 3339 automatically:
+
+```go
+type Event struct {
+    Name string    `json:"name"`
+    At   time.Time `json:"at"`
+}
+```
+
+```json
+{"name": "deploy", "at": "2026-08-08T10:30:00Z"}
+```
+
+For a nullable database column, use `sql.NullTime` or a pointer:
+
+```go
+type User struct {
+    CreatedAt time.Time  `db:"created_at"`
+    DeletedAt *time.Time `db:"deleted_at"`     // nil means not deleted
+}
+```
+
+For a Unix timestamp in JSON, a custom marshaller:
+
+```go
+type UnixTime time.Time
+
+func (t UnixTime) MarshalJSON() ([]byte, error) {
+    return []byte(strconv.FormatInt(time.Time(t).Unix(), 10)), nil
+}
+
+func (t *UnixTime) UnmarshalJSON(data []byte) error {
+    sec, err := strconv.ParseInt(string(data), 10, 64)
+    if err != nil {
+        return err
+    }
+    *t = UnixTime(time.Unix(sec, 0))
+    return nil
+}
+```
+
+Next, let's look at how a Go program talks to the operating system around it.

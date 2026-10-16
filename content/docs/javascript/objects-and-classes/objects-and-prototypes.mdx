@@ -1,0 +1,65 @@
+---
+title: Objects and Prototypes
+description: Work with properties, optional access, and the prototype chain.
+---
+
+An object groups named properties. Dot notation uses a fixed name; bracket notation evaluates a key at runtime. Property keys are strings or symbols, even when a number appears in brackets.
+
+```js
+const user = { name: "Asha", address: { city: "Pune" } };
+const field = "name";
+console.log(user.name, user[field]); // Asha Asha
+console.log(user.contact?.email ?? "No email");
+```
+
+`Object.keys(user)`, `Object.values(user)`, and `Object.entries(user)` return arrays of the object's own enumerable string-keyed properties. `Object.hasOwn(user, "name")` checks ownership. Use this when inherited properties should not count.
+
+## Where methods come from
+
+Most ordinary objects have a prototype. When a property is absent on the object, JavaScript looks along its prototype chain. Array methods such as `map` live on `Array.prototype`; each array can call them through that chain.
+
+```js
+const shared = { describe() { return this.name; } };
+const person = Object.create(shared);
+person.name = "Lin";
+console.log(person.describe()); // Lin
+console.log(Object.hasOwn(person, "describe")); // false
+```
+
+`Object.create(shared)` sets `shared` as the new object's prototype. This is useful for understanding the model; application code usually uses object literals, classes, or composition instead. Avoid changing built-in prototypes such as `Array.prototype`, because that changes behavior across your whole application.
+
+For a plain dictionary that receives arbitrary external keys, `new Map()` is often safer and clearer than `{}`. The `in` operator checks both own and inherited properties; `Object.hasOwn()` checks only own properties.
+
+## Follow one lookup
+
+For `person.describe()`, JavaScript first looks for an own property `describe` on `person`. There is none, so it follows `Object.getPrototypeOf(person)` to `shared` and finds the function there. The call still uses `person` as `this`, because the call expression begins with `person.`. That is how a shared method can read each instance's own data.
+
+If you set `person.describe = () => "custom"`, the new **own** property shadows the prototype method. Deleting that own property would reveal the shared one again. The prototype object itself can also have a prototype, producing a chain. This delegation model underlies `class` methods and built-in array methods.
+
+`Object.keys()` does not list symbol keys or non-enumerable properties. `Reflect.ownKeys()` lists all own keys, while `for...in` can include enumerable keys from prototypes. For ordinary data records, `Object.entries()` is a convenient way to iterate own enumerable string keys. These distinctions matter when copying or serializing objects.
+
+**Practice:** Add a method to a simple object, call it, and compare `Object.hasOwn()` with `"toString" in object`.
+
+**Check:** A plain object normally inherits `toString`, so `"toString" in object` is true but `Object.hasOwn(object, "toString")` is false unless you defined your own property with that name.
+
+## Own properties and lookup
+
+An object has **own properties** that were defined directly on it and may inherit properties through its prototype chain. The `in` operator searches both own and inherited properties. `Object.hasOwn(value, key)` checks only the object itself and is the preferred way to ask that question, including when the object has no prototype.
+
+Property keys are strings or symbols. Numeric-looking keys are converted to strings, so `object[1]` and `object["1"]` refer to the same property. Use bracket notation when the key is stored in a variable or contains characters that cannot appear in dot notation:
+
+```js
+const field = "first name";
+const person = { [field]: "Asha" };
+console.log(person[field]);
+```
+
+When reading optional nested data, check that each expected level exists or use optional chaining. When writing data from outside the program, validate keys and values rather than assuming a property exists because it was requested.
+
+## Prototype delegation
+
+Prototype lookup lets many instances share methods instead of creating a separate copy on each instance. If an own property has the requested name, it wins; otherwise JavaScript checks the prototype, then that prototype's prototype, until it finds a property or reaches `null`. This is delegation, not copying.
+
+Avoid changing built-in prototypes such as `Object.prototype` or `Array.prototype`; it can affect unrelated code and cause conflicts with libraries. Prefer a class, a factory function, or a standalone utility. Objects used purely as dictionaries should be created with `Object.create(null)` or represented as a `Map` when inherited names could be mistaken for data keys.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

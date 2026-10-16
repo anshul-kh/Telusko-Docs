@@ -1,0 +1,69 @@
+---
+title: Testing with Node.js
+description: Write unit and integration tests using the built-in test runner.
+---
+
+A test states an expected behavior and checks it automatically. Start with a **pure function**: same inputs, same output, no file or network effects. Pure functions are easy to test because you can call them directly.
+
+Create these two files in the same folder:
+
+```js title="cart.mjs"
+export function total(items) {
+  if (!Array.isArray(items)) throw new TypeError("items must be an array");
+  return items.reduce((sum, item) => {
+    if (!Number.isFinite(item.price) || !Number.isInteger(item.quantity) || item.quantity < 0) {
+      throw new TypeError("invalid item");
+    }
+    return sum + item.price * item.quantity;
+  }, 0);
+}
+```
+
+```js title="cart.test.mjs"
+import test from "node:test";
+import assert from "node:assert/strict";
+import { total } from "./cart.mjs";
+
+test("sums line items", () => {
+  assert.equal(total([{ price: 5, quantity: 2 }, { price: 3, quantity: 1 }]), 13);
+});
+
+test("empty cart costs zero", () => {
+  assert.equal(total([]), 0);
+});
+
+test("rejects a negative quantity", () => {
+  assert.throws(() => total([{ price: 5, quantity: -1 }]), TypeError);
+});
+```
+
+Run `node --test cart.test.mjs`. The test runner reports each case and exits non-zero if any fails. A good test name describes behavior rather than a function name. Cover ordinary input, boundaries, and invalid input. Here the boundary is an empty cart, and the invalid case checks that failure is explicit.
+
+For an async function, return or await its promise so the test runner knows when it is done:
+
+```js
+test("loads a value", async () => {
+  const value = await Promise.resolve(7);
+  assert.equal(value, 7);
+});
+```
+
+An **integration test** exercises several parts together, such as a request to an HTTP server. It is slower than a pure unit test but catches wiring mistakes. Mock only external boundaries you cannot control, and do not replace all real behavior with mocks or you may only test your mock setup.
+
+**Try it:** Add a test for zero quantity and one for `NaN` price. Change the expected total to a wrong number once so you can read a useful failure message.
+
+## Test structure and isolation
+
+Keep each test focused on one behavior and make its setup obvious. Tests should not depend on execution order or leftover files from another test. For file and network behavior, create temporary resources and clean them up in `finally` or the test runner's cleanup hooks. A failure should leave enough output to identify the input and expected result.
+
+Prefer testing public behavior rather than private implementation details. A refactor that preserves behavior should not require rewriting every assertion. For asynchronous tests, return or await all work; starting a promise without awaiting it can let the test finish before the assertion runs.
+
+## Useful assertions
+
+Use `assert.equal()` for strict equality from `node:assert/strict`, `assert.deepEqual()` for nested data, and `assert.throws()` or `assert.rejects()` for expected errors. Assert meaningful error properties when the message itself is not part of the function contract. Include boundary cases such as empty input, minimum and maximum values, and malformed data.
+
+Tests provide evidence about the cases they execute; they do not prove the program has no bugs. Combine focused tests with code review and manual checks for behavior that is difficult to automate.
+
+See the [Node test runner documentation](https://nodejs.org/api/test.html) for filtering, coverage, and mocking options.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

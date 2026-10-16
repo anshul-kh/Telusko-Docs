@@ -1,0 +1,61 @@
+---
+title: ES Modules
+description: Split code into files and understand browser and Node.js module loading.
+---
+
+Modules give files their own scope and explicit imports and exports. They help you separate pure logic from code that interacts with a browser or server.
+
+```js title="math.mjs"
+export function add(a, b) {
+  return a + b;
+}
+```
+
+```js title="main.mjs"
+import { add } from "./math.mjs";
+console.log(add(2, 3)); // 5
+```
+
+Run `node main.mjs`. Node's ES module imports need an explicit relative path and file extension. A named export must be imported with its exported name (or renamed with `as`). A module may also have one `default` export, but named exports are often easier to find and refactor.
+
+For browsers, use `.js` files and load the entry file with `<script type="module" src="./main.js"></script>`. Browser modules are deferred and use strict mode. Serve them over HTTP rather than opening an HTML file through `file://`; local file restrictions can block imports. Browser specifiers usually need a relative or absolute URL. Bare package names require an import map or a build tool.
+
+Node can also treat `.js` as ES modules when the nearest `package.json` has `"type": "module"`. Older CommonJS code uses `require()` and `module.exports`; do not mix the two syntaxes casually. Dynamic `import("./feature.mjs")` returns a promise and can load a module when it is needed. Top-level `await` works in ES modules, but a slow top-level dependency delays its importers.
+
+## Module scope and evaluation
+
+Each ES module has its own top-level scope. Top-level `let`, `const`, and function declarations do not become properties of `globalThis`. Imports are live read-only bindings to exported values: when the exporting module updates an exported `let`, an importer observes the new value, but cannot assign to the imported binding.
+
+Modules are evaluated once per resolved module identity and cached by the runtime. Circular imports are allowed, but values may be observed before a module has finished initializing; keep dependency directions simple where possible. Avoid side effects at import time unless they are an intentional part of the module contract.
+
+## Paths and exports
+
+Relative imports in Node generally need an explicit file extension, such as `./math.mjs`. Bare specifiers such as `node:fs` or an installed package name are resolved by runtime package rules. A default export represents one primary value; named exports expose several explicit values. Use named exports when consumers benefit from discoverable APIs and refactoring support.
+
+Keep modules cohesive: one file should have a clear responsibility, and imports should make dependencies visible. Avoid a large shared utility module that becomes a dumping ground. Package entry points and conditional exports can expose different files for Node and browsers, so package authors should test each environment they claim to support.
+
+## Why modules help
+
+Without modules, a growing program may put every binding in one file or on the global object. Modules give each file a private top-level scope. The `math.mjs` example exports only `add`; any helper not exported stays local to that file. The importing file cannot read it just because the files are in the same folder.
+
+An `import` binding is live and read-only from the importing side. If an exported binding changes inside its own module, importers see the new value, but they cannot assign to the import name. Modules are evaluated once for a particular resolved module URL/path, then reused by later importers. Circular imports are possible but can expose bindings before initialization, so avoid them when the design can be separated more cleanly.
+
+```js title="counter.mjs"
+export let count = 0;
+export function increment() { count += 1; }
+```
+
+```js title="use-counter.mjs"
+import { count, increment } from "./counter.mjs";
+increment();
+console.log(count); // 1
+// count = 9; // cannot assign to an import binding
+```
+
+In a browser, a module import is a network request for a URL. The server must return the right JavaScript MIME type, and cross-origin rules apply. In Node, resolution follows file paths and package rules. This is why the same `import` syntax can have different resolution behavior in different hosts.
+
+**Practice:** Export a `square()` function from `math.mjs`, import it into `main.mjs`, and run it with Node. Then intentionally misspell the import name and read the error.
+
+**Check:** A misspelled named import fails during module loading, before the rest of `main.mjs` runs. Correct the export or import name; changing the call later in the file cannot fix that mismatch.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

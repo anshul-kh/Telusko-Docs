@@ -1,0 +1,347 @@
+---
+title: Context for Cancellation
+---
+
+A user opens a page, your service starts a database query, calls two other services, and begins rendering. Two seconds in, the user hits stop. Everything downstream should stop too, immediately, and release its connections.
+
+`context` is how that message travels. One value threaded through every call, carrying a cancellation signal, a deadline, and a small amount of request-scoped data.
+
+## The interface
+
+```go
+type Context interface {
+    Done() <-chan struct{}
+    Err() error
+    Deadline() (deadline time.Time, ok bool)
+    Value(key any) any
+}
+```
+
+Four methods, and `Done()` is the one that matters. It returns a channel that is closed when the context is cancelled, which makes it usable in any `select`.
+
+```go
+select {
+case result := <-work:
+    return result, nil
+case <-ctx.Done():
+    return nil, ctx.Err()
+}
+```
+
+`ctx.Err()` tells you why: `context.Canceled` when somebody called cancel, `context.DeadlineExceeded` when time ran out.
+
+## Creating contexts
+
+```go
+ctx := context.Background()      // the root, for main and tests
+ctx := context.TODO()            // a placeholder, "I will wire this up later"
+```
+
+Then derive from it:
+
+```go
+// Manual cancellation
+ctx, cancel := context.WithCancel(parent)
+defer cancel()
+
+// Cancel after a duration
+ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+defer cancel()
+
+// Cancel at a specific time
+ctx, cancel := context.WithDeadline(parent, deadline)
+defer cancel()
+
+// Cancel with a specific error, Go 1.20+
+ctx, cancel := context.WithCancelCause(parent)
+cancel(errors.New("upstream rejected the request"))
+```
+
+<Callout type="warn">
+**Always `defer cancel()`.** Even when the context has a timeout that will fire on its own. The cancel function releases resources associated with the context, and skipping it leaks a timer and a goroutine until the deadline passes. `go vet` reports the missing call and it is worth taking seriously.
+</Callout>
+
+## The tree
+
+Contexts form a tree, and cancellation flows downward only.
+
+```text
+   Background
+       │
+       └── request ctx (timeout 30s)
+              │
+              ├── database ctx (timeout 5s)
+              │
+              └── api call ctx (timeout 10s)
+                       │
+                       └── retry ctx (timeout 2s)
+```
+
+Cancelling the request context cancels every descendant. Cancelling the database context affects nothing above it.
+
+A child never outlives its parent. `context.WithTimeout(parent, time.Hour)` on a parent that expires in five seconds gives you five seconds, not an hour. The shortest deadline in the chain wins.
+
+## The conventions
+
+Four rules, followed universally in Go code:
+
+```text
+   1. context.Context is the FIRST parameter, always named ctx
+   2. Never store a context in a struct field
+   3. Never pass a nil context, use context.TODO() if you must
+   4. Contexts are safe for concurrent use by many goroutines
+```
+
+```go
+func FetchUser(ctx context.Context, id string) (*User, error)     // yes
+func FetchUser(id string, ctx context.Context) (*User, error)     // no
+```
+
+Rule two has an exception worth knowing: `http.Request` stores a context, and you access it with `r.Context()` and replace it with `r.WithContext(ctx)`. That predates the convention and is the accepted way to work with requests.
+
+## Respecting cancellation
+
+A context does nothing on its own. Nothing is interrupted, no goroutine is killed. Your code has to check.
+
+```go
+func processAll(ctx context.Context, items []Item) error {
+    for i, item := range items {
+        // Check between units of work.
+        select {
+        case <-ctx.Done():
+            return fmt.Errorf("cancelled after %d of %d items: %w",
+                i, len(items), ctx.Err())
+        default:
+        }
+
+        if err := process(ctx, item); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+```
+
+For a long-running loop, `context.Cause(ctx)` gives you the reason when the context was cancelled with `WithCancelCause`, and falls back to `ctx.Err()` otherwise.
+
+Anything that blocks needs the context in a `select`:
+
+```go
+select {
+case <-time.After(retryDelay):
+case <-ctx.Done():
+    return ctx.Err()
+}
+```
+
+```go
+select {
+case results <- value:
+case <-ctx.Done():
+    return ctx.Err()
+}
+```
+
+That second one is the leak prevention from the worker pools page, in its general form.
+
+## The standard library respects it for you
+
+Most blocking operations in the standard library already take a context and handle cancellation properly:
+
+```go
+// HTTP client
+req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+resp, err := http.DefaultClient.Do(req)
+
+// Database
+rows, err := db.QueryContext(ctx, "SELECT ...")
+err := db.QueryRowContext(ctx, "SELECT ...").Scan(&v)
+_, err := db.ExecContext(ctx, "UPDATE ...")
+tx, err := db.BeginTx(ctx, nil)
+```
+
+Use the context-aware variant every time. `db.Query` without a context means a slow query keeps running after the client disconnects, holding a connection from the pool for no reason.
+
+## Timeouts in practice
+
+```go
+func (s *Service) GetProfile(ctx context.Context, id string) (*Profile, error) {
+    // Cap the database call, even if the caller allowed longer.
+    dbCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+    defer cancel()
+
+    user, err := s.repo.FindUser(dbCtx, id)
+    if err != nil {
+        return nil, fmt.Errorf("loading user: %w", err)
+    }
+
+    // A separate, longer budget for the external call.
+    apiCtx, cancel2 := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel2()
+
+    prefs, err := s.prefsClient.Get(apiCtx, id)
+    if err != nil {
+        slog.WarnContext(ctx, "preferences unavailable, using defaults", "error", err)
+        prefs = defaultPrefs()
+    }
+
+    return &Profile{User: user, Prefs: prefs}, nil
+}
+```
+
+Each downstream call gets a budget appropriate to it, and all of them are still bounded by whatever the caller allowed.
+
+## Context in an HTTP server
+
+Every request already has one, and it is cancelled automatically when the client disconnects:
+
+```go
+func handler(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+
+    result, err := doSlowWork(ctx)
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            // The client hung up. Not our failure, do not log as an error.
+            return
+        }
+        http.Error(w, "internal error", http.StatusInternalServerError)
+        return
+    }
+
+    json.NewEncoder(w).Encode(result)
+}
+```
+
+Distinguishing `context.Canceled` from a real failure matters. Treating client disconnects as 500s fills your error dashboards with things that were never your fault.
+
+Add a server-wide timeout with middleware:
+
+```go
+func Timeout(d time.Duration) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            ctx, cancel := context.WithTimeout(r.Context(), d)
+            defer cancel()
+            next.ServeHTTP(w, r.WithContext(ctx))
+        })
+    }
+}
+```
+
+## Context values
+
+A context can carry request-scoped data. This is the most misused part of the package, so the rules are strict.
+
+```go
+type contextKey string
+
+const requestIDKey contextKey = "requestID"
+
+func WithRequestID(ctx context.Context, id string) context.Context {
+    return context.WithValue(ctx, requestIDKey, id)
+}
+
+func RequestID(ctx context.Context) string {
+    id, _ := ctx.Value(requestIDKey).(string)
+    return id
+}
+```
+
+**Use an unexported custom type as the key.** A plain string key can collide with a key set by any other package, silently. The custom type makes collision impossible because no other package can construct your key type.
+
+**Use it only for request-scoped metadata.** Request IDs, trace spans, authenticated user identity, locale. Things that genuinely belong to this request and travel with it.
+
+**Never use it for optional parameters.**
+
+```go
+// Wrong: the signature no longer says what the function needs
+func Process(ctx context.Context) error {
+    limit := ctx.Value("limit").(int)      // invisible dependency, panics if absent
+}
+
+// Right
+func Process(ctx context.Context, limit int) error
+```
+
+<Callout type="warn">
+Context values are untyped, unchecked, and invisible in the signature. A function reading a value the caller forgot to set gets nil and either panics or silently misbehaves. If a value is required for the function to work, it belongs in the parameter list.
+</Callout>
+
+Typical legitimate use, in middleware:
+
+```go
+func RequestIDMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        id := r.Header.Get("X-Request-ID")
+        if id == "" {
+            id = uuid.NewString()
+        }
+
+        ctx := WithRequestID(r.Context(), id)
+        w.Header().Set("X-Request-ID", id)
+
+        next.ServeHTTP(w, r.WithContext(ctx))
+    })
+}
+```
+
+Every log line downstream can then include the request ID without every function taking it as a parameter, which is exactly the case context values were designed for.
+
+## Cancellation with a cause
+
+Go 1.20 added the ability to say why:
+
+```go
+ctx, cancel := context.WithCancelCause(parent)
+
+go func() {
+    if err := validate(input); err != nil {
+        cancel(fmt.Errorf("validation failed: %w", err))
+    }
+}()
+
+<-ctx.Done()
+fmt.Println(ctx.Err())              // context.Canceled, as always
+fmt.Println(context.Cause(ctx))     // validation failed: ...
+```
+
+`ctx.Err()` stays generic for compatibility. `context.Cause(ctx)` gives you the specific error, which turns an unhelpful "context canceled" in the logs into something actionable.
+
+## The mistakes to avoid
+
+```go
+// Storing a context in a struct
+type Service struct {
+    ctx context.Context      // no, pass it to each method
+}
+
+// Forgetting cancel
+ctx, _ := context.WithTimeout(parent, time.Second)     // leaks
+
+// Passing nil
+doWork(nil)                                            // use context.TODO()
+
+// Using Background inside a request
+func handler(w http.ResponseWriter, r *http.Request) {
+    ctx := context.Background()      // throws away the request's cancellation
+}
+
+// Required arguments hidden in values
+userID := ctx.Value("userID").(string)                 // make it a parameter
+```
+
+## The mental model
+
+```text
+   A context is a request's lifetime, made explicit.
+
+   It flows DOWN the call stack, never up.
+   It is cancelled from ABOVE, never from below.
+   It carries a deadline, a cancel signal, and a little metadata.
+   Everything blocking must select on ctx.Done().
+```
+
+Get that right and cancellation, timeouts, and shutdown all work by construction rather than by careful patching afterwards.
+
+Next, let's look at how to prove that concurrent code is actually correct.

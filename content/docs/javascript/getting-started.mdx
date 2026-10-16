@@ -1,0 +1,54 @@
+---
+title: Getting Started
+description: An ordered path from your first JavaScript expression to browser and Node.js projects.
+icon: Sparkles
+---
+
+You can start here with no programming experience. The lessons assume you can create a folder, edit a text file, and run a command. When a page uses a browser-only or Node.js-only API, it says so explicitly.
+
+## The route
+
+| Stage | Sections | You will be able to |
+| --- | --- | --- |
+| Foundations | 1-3 | Run code, understand values, and control program flow |
+| Core language | 4-8 | Write functions, model data, reuse modules, and read unfamiliar code |
+| Applications | 9-11 | Work with asynchronous tasks, browser interfaces, and Node servers |
+| Engineering | 12-14 | Test, debug, secure, ship, and build complete projects |
+
+Read sections in order. Each page has a small practice task. Try it before checking your result; changing an example and predicting the output is often more useful than copying it unchanged.
+
+## Tools you need
+
+- A current web browser with developer tools.
+- A text editor, such as VS Code, that can save plain text files.
+- The current **LTS** version of [Node.js](https://nodejs.org/en/download), which includes npm. Check the exact current LTS label on the download page because it changes over time.
+
+You do not need a framework, a paid account, or prior TypeScript experience. The project chapters use JavaScript and built-in platform APIs so that the language stays visible.
+
+## How to read examples
+
+`node filename.mjs` runs Node examples. Browser examples contain an HTML file and a JavaScript file; open the page in a browser unless the lesson says to serve it over HTTP. A fenced block marked `text` is expected output, not code to run. Commands use a generic terminal; on Windows, PowerShell works for the `node` commands shown here. If PowerShell blocks `npm.ps1`, use `npm.cmd` instead of `npm`.
+
+Start with [what JavaScript is](/docs/javascript/introduction), then [set up your environment](/docs/javascript/foundations/runtime-and-setup).
+
+## A steady study routine
+
+For each lesson, type the example yourself and run it. Before changing it, write down what you expect. Then vary one thing at a time: an empty input, a different type, a boundary value, or a failure. Keep the experiment small enough that you can explain every output.
+
+You do not need to memorize every method. Learn how to find the right reference, recognize the kind of value you have, and test the behavior you depend on. The built-in names and syntax become familiar through use.
+
+## Common beginner mistakes
+
+- **Copying without running:** a code block may depend on an earlier file or a particular runtime. Check its filename and setup notes.
+- **Mixing strings and numbers:** form fields and command-line arguments begin as strings. Parse and validate them before arithmetic.
+- **Ignoring the console:** the browser developer console and Node terminal show output, stack traces, and syntax errors.
+- **Treating errors as mysterious:** read the error name and first useful stack frame, then inspect the value at that line.
+- **Changing several things at once:** isolate one change so you know what affected the result.
+
+## Suggested milestones
+
+After the foundations and core language, write a function that validates input and returns a result without changing outside state. After asynchronous JavaScript, explain why `await` pauses one async function but does not move CPU-heavy work to another thread. After browser and Node development, build one small app in each host. Finish by adding tests and handling invalid input deliberately.
+
+**Checkpoint:** Choose one lesson and write a short summary in your own words, one boundary case, and one question you still have. This turns reading into a record you can use later.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

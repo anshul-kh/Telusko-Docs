@@ -1,0 +1,92 @@
+---
+title: Declarations and Scope
+description: Use const and let, and understand blocks, reassignment, and hoisting.
+---
+
+A variable is a named binding to a value. Prefer `const` when the binding will not be reassigned, and `let` when it will. Avoid `var` in new code: it is function-scoped and can be redeclared in ways that make mistakes easier.
+
+```js
+const price = 20;
+let quantity = 2;
+quantity += 1;
+console.log(price * quantity); // 60
+```
+
+`const` prevents reassignment of the binding; it does **not** freeze an object:
+
+```js
+const cart = { count: 1 };
+cart.count = 2; // allowed
+// cart = { count: 3 }; // TypeError
+```
+
+It helps to separate the *binding* from the *value*. `cart` is the name you use to reach one object. `const` keeps that name attached to the same object; the object's own properties can still change. Use `Object.freeze()` when you deliberately need a shallow read-only object, and remember nested objects can still mutate.
+
+## Scope
+
+`let` and `const` are visible only inside the block where they were declared. A block is code between braces, such as an `if` body. An inner block can read an outer binding; the outer block cannot read an inner one.
+
+```js
+const user = "Asha";
+if (true) {
+  const message = `Hi, ${user}`;
+  console.log(message);
+}
+// console.log(message); // ReferenceError
+```
+
+Declarations are processed before code runs, but using a `let` or `const` binding before its declaration throws a `ReferenceError`. This period is called the **temporal dead zone**. Function declarations can usually be called earlier in their scope, though defining before use is clearer for beginners.
+
+An inner declaration with the same name **shadows** an outer one. It does not rewrite the outer binding:
+
+```js
+let level = 1;
+{
+  let level = 2;
+  console.log(level); // 2
+}
+console.log(level); // 1
+```
+
+Shadowing is legal but can confuse a reader when the scopes are long. Prefer different, meaningful names if both values matter. A binding declared with `let` but not initialized has the value `undefined` after its declaration. A `const` must be initialized immediately.
+
+You may see `var` in older code. It is scoped to the nearest function rather than the nearest block, and its declaration can be observed before its assignment as `undefined`. Learn to recognize it so you can read legacy programs, but use `const` and `let` in new examples.
+
+Names are case-sensitive: `total` and `Total` are different. Use meaningful camelCase names like `itemCount`, not a row of `x1`, `x2` variables.
+
+**Practice:** Write a block with a `let score`, change it inside the block, then try to print it outside. Explain why the final line fails.
+
+**Check:** The outer line throws a `ReferenceError` because `score` only exists between its block's braces. Move the declaration outside the block if later code needs it.
+
+## Reassignment and initialization
+
+`const` means the binding cannot point somewhere else; it does not mean the value is deeply immutable. Reassignable bindings should use `let`, and values that never need rebinding should use `const`. This makes data flow easier to inspect because each `const` name keeps one association throughout its scope.
+
+```js
+const names = ["Ada"];
+names.push("Grace"); // allowed: the array changes
+// names = [];        // TypeError: the binding cannot be reassigned
+
+let selected = null;
+selected = "Ada"; // allowed: let can be reassigned
+```
+
+Declare a binding near its first use and initialize it when possible. An uninitialized `let` becomes `undefined`, which can conceal a forgotten assignment. A `const` must receive a value at declaration. `const` and `let` are block-scoped; `var` is function-scoped, and its declaration is hoisted and initialized to `undefined`, which explains many confusing legacy behaviors.
+
+## Scope in functions
+
+Each function call creates a new local scope. Parameters and local declarations belong to that call, so two calls can use the same local name without sharing its value. A nested function can access bindings from the surrounding function; this is lexical scope and is the basis of closures.
+
+```js
+function makeLabel(prefix) {
+  const separator = ": ";
+  return (value) => `${prefix}${separator}${value}`;
+}
+
+const warning = makeLabel("Warning");
+console.log(warning("Check the input"));
+```
+
+The returned function can still read `prefix` and `separator` after `makeLabel()` has returned. Closures are covered in [Closures and this](/docs/javascript/functions-and-scope/closures-and-this).
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

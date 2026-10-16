@@ -1,0 +1,75 @@
+---
+title: Property Descriptors and Proxies
+description: Control property behavior and intercept operations with Reflect and Proxy.
+---
+
+So far, object properties have looked like simple key-value pairs. Each own property also has a **descriptor**. A data property can be writable or read-only, enumerable or hidden from normal enumeration, and configurable or locked against redefinition. `Object.getOwnPropertyDescriptor()` shows the details.
+
+```js
+const user = { name: "Asha" };
+console.log(Object.getOwnPropertyDescriptor(user, "name"));
+// value: "Asha", writable: true, enumerable: true, configurable: true
+```
+
+`Object.defineProperty()` lets you choose these flags. Flags omitted from a new descriptor default to `false`, so be explicit:
+
+```js
+Object.defineProperty(user, "id", {
+  value: 7,
+  writable: false,
+  enumerable: true,
+  configurable: false,
+});
+console.log(Object.keys(user)); // ["name", "id"]
+// user.id = 8; // TypeError in modules (strict mode)
+```
+
+An **accessor property** has a getter or setter instead of a stored `value`. A getter can compute a value each time it is read. Avoid getters with hidden network requests or surprising side effects; callers expect property access to be cheap.
+
+`Object.freeze()` prevents extensions and makes an object's own data properties non-writable and non-configurable, but it is shallow. A nested object can still change unless you freeze it separately.
+
+## Intercepting operations
+
+A `Proxy` wraps an object and intercepts operations called **traps**. `Reflect` performs the default operation and is useful inside a trap:
+
+```js
+const scores = { Ada: 10 };
+const guarded = new Proxy(scores, {
+  set(target, key, value, receiver) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new TypeError("Score must be a non-negative number");
+    }
+    return Reflect.set(target, key, value, receiver);
+  },
+});
+guarded.Lin = 8;
+console.log(scores.Lin); // 8
+```
+
+The proxy is not a security boundary: code that still has `scores` can bypass it. Proxy traps must obey language invariants; for example, a trap cannot claim a non-configurable property does not exist. Use proxies for specialized libraries or observability, not when an ordinary function or class can express the rule more clearly.
+
+**Try it:** Add a `get` trap that logs each property name and delegates to `Reflect.get()`. Read `guarded.Ada`, then try assigning a negative score and explain which operation failed.
+
+## Property descriptors
+
+Each ordinary property has a descriptor. Data properties store a value and have `writable`; accessor properties have `get` and/or `set`. Both forms also have `enumerable` and `configurable` flags. Properties created with object literals are normally writable, enumerable, and configurable. `Object.defineProperty()` can define a property with different flags.
+
+```js
+const settings = {};
+Object.defineProperty(settings, "version", {
+  value: 1,
+  enumerable: true,
+  writable: false,
+  configurable: false,
+});
+```
+
+`Object.keys()` lists own enumerable string keys. `Reflect.ownKeys()` includes all own string and symbol keys, even non-enumerable ones. `Object.getOwnPropertyDescriptor()` inspects one property. These distinctions matter when copying, serializing, or building generic utilities.
+
+## Proxy responsibilities
+
+A `Proxy` can intercept reads, writes, calls, and other operations. Its handler should preserve JavaScript invariants and usually delegate through `Reflect` to retain standard behavior. Proxies are useful for validation, logging, and compatibility layers, but they can make debugging and identity-sensitive code harder. A proxy is not equal to its target, and many built-ins require special handling of their internal slots.
+
+Prefer explicit functions and setters when interception would surprise a caller. Never treat a proxy as a security sandbox: untrusted code needs an actual isolation boundary, not a clever object wrapper.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

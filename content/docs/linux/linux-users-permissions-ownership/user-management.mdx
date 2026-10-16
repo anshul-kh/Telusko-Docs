@@ -1,0 +1,277 @@
+---
+title: Linux User Management
+---
+
+## What Is User Management?
+
+Linux is a **multi-user operating system**, meaning multiple users can have separate accounts on the same machine. Each account has its own identity, permissions, and, usually, a home directory.
+
+User management helps administrators control who can access the system and what each user is allowed to do.
+
+In this lecture, we'll learn how to create users, view their details, switch between accounts, and delete users.
+
+
+---
+
+
+## Creating a User
+
+Linux provides the `useradd` command to create user accounts.
+
+```
+sudo useradd dev1
+```
+
+This creates a user named `dev1`. The command requires administrative privileges.
+
+**Important:** On many Linux distributions, `useradd` does not create a home directory unless you specify the `-m` option. Defaults can vary depending on the system configuration.
+
+### Creating a User with a Home Directory
+
+To create a user and a home directory together, use:
+
+```
+sudo useradd -m dev2
+```
+
+The `-m` option creates a home directory, typically `/home/dev2`.
+
+A home directory provides a personal workspace where the user can store files and directories.
+
+### Setting a Password
+
+Creating a user does not automatically set a password. Use `passwd` to assign one:
+
+```
+sudo passwd dev2
+```
+
+Enter and confirm the new password when prompted.
+
+The same command can be used to change an existing user's password:
+
+```
+sudo passwd dev1
+```
+
+
+---
+
+
+## Viewing User Information
+
+Linux provides several commands and system files for checking user details.
+
+### 1. Check User and Group IDs
+
+Use the `id` command:
+
+```
+id dev1
+```
+
+Example output:
+
+```
+uid=1001(dev1) gid=1001(dev1) groups=1001(dev1)
+```
+
+This output shows:
+
+- `uid`: The user's unique numeric ID.
+- `gid`: The ID of the user's primary group.
+- `groups`: The groups the user belongs to.
+
+The actual IDs and group memberships depend on the system.
+
+### 2. View User Accounts
+
+Linux stores basic account information in `/etc/passwd`.
+
+```
+cat /etc/passwd
+```
+
+Each line represents a user account, including system accounts used by services. Not every listed account represents a person who can log in interactively.
+
+To find a specific account, use:
+
+```
+grep '^dev1:' /etc/passwd
+```
+
+Each entry contains seven colon-separated fields, including the username, user ID, primary group ID, home directory, and login shell.
+
+**Note:** `/etc/passwd` does not normally store users' actual passwords. Password hashes are generally stored in `/etc/shadow`, which has restricted access.
+
+
+---
+
+
+## Switching Between Users
+
+The `su` command allows you to switch to another user account.
+
+```
+su - dev2
+```
+
+The `-` option starts a login shell, loading the target user's environment and normally placing you in their home directory.
+
+Depending on the system configuration, switching may require the target user's password or authorization through another mechanism.
+
+### Verify the Current User
+
+Use `whoami` to display the username associated with your current session:
+
+```
+whoami
+```
+
+Example output:
+
+```
+dev2
+```
+
+### Check the Current Directory
+
+Use `pwd` to display your current working directory:
+
+```
+pwd
+```
+
+After switching to `dev2` with `su - dev2`, the output will typically be:
+
+```
+/home/dev2
+```
+
+To return to the previous shell, run:
+
+```
+exit
+```
+
+
+---
+
+
+## Understanding Home Directories
+
+A home directory is a user's default personal workspace. For ordinary user accounts, it is commonly located under `/home`.
+
+For example:
+
+```
+/home/
+├── ubuntu/
+├── dev1/
+└── dev2/
+```
+
+You can list the directories under `/home` using:
+
+```
+ls /home
+```
+
+The output depends on which home directories have actually been created.
+
+Remember that **creating a user account does not always create a home directory**. The `-m` option or the system's account configuration determines whether one is created.
+
+
+---
+
+
+## Default Group Assignment
+
+Linux uses groups to manage permissions for multiple users.
+
+On many distributions, creating a user also creates a group with the same name and assigns that user to it. This is commonly called a *user-private group* setup.
+
+For example:
+
+```
+id dev1
+```
+
+Possible output:
+
+```
+uid=1001(dev1) gid=1001(dev1) groups=1001(dev1)
+```
+
+Here, `dev1` belongs to a group also named `dev1`. However, this behavior depends on the distribution and its configuration.
+
+Users can also belong to additional groups, which is useful when multiple users need access to shared files or resources. Group management can be covered separately.
+
+
+---
+
+
+## Deleting a User
+
+Use `userdel` to remove a user account:
+
+```
+sudo userdel dev1
+```
+
+This removes the account, but **does not necessarily delete the user's home directory or files**.
+
+To remove the account along with its home directory and mail spool, use:
+
+```
+sudo userdel -r dev1
+```
+
+Use the `-r` option carefully. Back up any files that need to be retained before deleting an account.
+
+You can check whether the account still exists by running:
+
+```
+id dev1
+```
+
+If the account has been removed, the command reports that the user does not exist.
+
+
+---
+
+
+## Quick Reference
+
+| Command                     | Purpose                                               |
+| --------------------------- | ----------------------------------------------------- |
+| `sudo useradd dev1`         | Create a user account                                 |
+| `sudo useradd -m dev2`      | Create a user with a home directory                   |
+| `sudo passwd dev1`          | Set or change a user's password                       |
+| `id dev1`                   | Display user and group IDs                            |
+| `cat /etc/passwd`           | View account records                                  |
+| `grep '^dev1:' /etc/passwd` | Find a specific account record                        |
+| `su - dev2`                 | Switch to a user with a login shell                   |
+| `whoami`                    | Display the current username                          |
+| `pwd`                       | Display the current working directory                 |
+| `ls /home`                  | List entries under `/home`                            |
+| `sudo userdel dev1`         | Delete a user account                                 |
+| `sudo userdel -r dev1`      | Delete a user and their home directory and mail spool |
+
+
+---
+
+
+## Summary
+
+- Linux supports multiple user accounts, each with its own identity and access permissions.
+- Use `useradd -m` when you want to create a user with a home directory.
+- Use `passwd` to set or change a user's password.
+- Use `id` to inspect user IDs, primary group IDs, and group memberships.
+- `/etc/passwd` stores basic account information, not the actual user passwords.
+- Use `su - username` to switch users and load their login environment.
+- `userdel` removes an account; `userdel -r` also removes its home directory and mail spool.
+
+**Best practice:** Verify the account and back up any required data before deleting a user, especially on shared servers.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>

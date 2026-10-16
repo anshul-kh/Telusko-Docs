@@ -1,0 +1,58 @@
+---
+title: Files and Command-Line Programs
+description: Read arguments, use paths, and handle file errors in Node.js.
+---
+
+Node.js runs JavaScript outside the browser. It supplies APIs for files, processes, sockets, and more. Import built-in modules with the `node:` prefix so it is obvious that they come from Node. These examples use ES modules; save them as `.mjs` and run them with `node filename.mjs`.
+
+## Process arguments and exit status
+
+Node exposes command-line arguments through `process.argv`. The first entries identify the Node executable and script; later entries are user arguments. Parse those strings deliberately, show a usage message for invalid commands, and set a non-zero exit status when the command fails. A CLI should write normal results to stdout and diagnostic errors to stderr so other tools can redirect them separately.
+
+Avoid assuming the current working directory is the script's directory. Resolve user paths relative to `process.cwd()` when that is the documented behavior, or relative to `import.meta.url` when files belong beside the script. This distinction matters when a command is launched from another folder.
+
+## A useful first CLI
+
+Create a file beside `notes.mjs` later; this version prints and appends a note. `process.argv` contains the Node executable path, the script path, then user arguments.
+
+```js title="notes.mjs"
+import { appendFile, readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const [command, ...words] = process.argv.slice(2);
+const file = join(process.cwd(), "notes.txt");
+
+try {
+  if (command === "add") {
+    const note = words.join(" ").trim();
+    if (!note) throw new Error("A note is required");
+    await appendFile(file, `${note}\n`, "utf8");
+    console.log("Saved");
+  } else if (command === "list") {
+    const contents = await readFile(file, "utf8");
+    console.log(contents.trimEnd());
+  } else {
+    console.error("Usage: node notes.mjs add <words> | list");
+    process.exitCode = 1;
+  }
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+```
+
+Run `node notes.mjs add Learn JavaScript`, then `node notes.mjs list`. `appendFile` creates the file when needed. Running `list` before adding a note raises an `ENOENT` error; you can handle that case separately if an empty list should be normal. `process.cwd()` is the directory where the user launched the command, which differs from the script's location when the command runs elsewhere.
+
+`node:fs/promises` returns promises, so `await` works with `try/catch`. Prefer these asynchronous APIs in servers; a synchronous file operation pauses the event loop. `node:path` joins path segments using the correct separator for the operating system.
+
+**Common mistake:** Never build an arbitrary file path directly from an untrusted web request. A value such as `../../secret` could escape the intended directory. Constrain or map allowed filenames before reading or writing.
+
+**Try it:** Add a `clear` command that empties `notes.txt` using `writeFile(file, "", "utf8")`. Test an unknown command and check that the process exits with a non-zero status.
+
+## Handle files safely
+
+For small files, promise-based `readFile()` and `writeFile()` are convenient. For large files, use streams to avoid loading the whole file into memory. Specify an encoding when working with text and leave data as buffers when working with binary content.
+
+File operations can fail because a path is missing, permissions are denied, or disk space runs out. Catch errors at the CLI boundary, print a concise message to stderr, and set a failing exit code. Avoid printing raw stack traces to ordinary users unless a debug mode is enabled.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

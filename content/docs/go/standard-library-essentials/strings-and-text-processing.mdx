@@ -1,0 +1,287 @@
+---
+title: Strings and Text Processing
+---
+
+The `strings` package has about sixty functions. You will use twelve of them constantly and the rest occasionally. This page covers the twelve properly, then the three tools that handle the cases where a plain function is not enough.
+
+## The functions you will actually use
+
+```go
+import "strings"
+
+s := "  Hello, Go World  "
+
+strings.TrimSpace(s)                    // "Hello, Go World"
+strings.ToLower(s)                      // "  hello, go world  "
+strings.ToUpper(s)                      // "  HELLO, GO WORLD  "
+
+strings.Contains(s, "Go")               // true
+strings.HasPrefix("https://x.com", "https://")   // true
+strings.HasSuffix("report.pdf", ".pdf")          // true
+strings.Index(s, "Go")                  // 9, byte offset, or -1
+strings.Count("banana", "na")           // 2
+
+strings.Split("a,b,c", ",")             // ["a" "b" "c"]
+strings.Join([]string{"a","b"}, "-")    // "a-b"
+strings.ReplaceAll("a-b-c", "-", "_")   // "a_b_c"
+strings.Repeat("=", 40)                 // a divider
+```
+
+## Trimming, in its variants
+
+The Trim family confuses people because the names look similar and behave differently.
+
+```go
+strings.TrimSpace("  hi  ")             // "hi", any leading and trailing whitespace
+
+strings.Trim("**hi**", "*")             // "hi", any of the CHARACTERS given
+strings.TrimLeft("**hi**", "*")         // "hi**"
+strings.TrimRight("**hi**", "*")        // "**hi"
+
+strings.TrimPrefix("Bearer abc123", "Bearer ")   // "abc123", the exact STRING
+strings.TrimSuffix("file.txt", ".txt")           // "file"
+```
+
+The critical difference: `Trim` takes a **set of characters** and removes any of them. `TrimPrefix` takes an **exact string**.
+
+```go
+strings.Trim("hello", "lo")          // "he", removed l and o from both ends
+strings.TrimPrefix("hello", "lo")    // "hello", the prefix is not "lo"
+```
+
+`TrimPrefix` returns the string unchanged when the prefix is absent, which makes it safe to call unconditionally:
+
+```go
+token := strings.TrimPrefix(header, "Bearer ")     // no need to check first
+```
+
+## Splitting
+
+```go
+strings.Split("a,b,c", ",")            // ["a" "b" "c"]
+strings.Split("abc", "")               // ["a" "b" "c"], every character
+strings.Split("a", ",")                // ["a"], no separator found
+strings.Split("", ",")                 // [""], one empty string, not an empty slice
+
+strings.SplitN("a,b,c,d", ",", 2)      // ["a" "b,c,d"], at most 2 parts
+strings.Fields("  a   b  c ")          // ["a" "b" "c"], splits on any whitespace
+```
+
+`Fields` is the one people forget. For whitespace-separated input it handles multiple spaces, tabs, and leading or trailing gaps, where `Split(s, " ")` produces empty strings between them.
+
+```go
+strings.Split("a  b", " ")     // ["a" "" "b"], with an empty string
+strings.Fields("a  b")         // ["a" "b"]
+```
+
+`SplitN` with 2 is the standard way to parse a key and value where the value might contain the separator:
+
+```go
+parts := strings.SplitN("DATABASE_URL=postgres://user:pass@host/db", "=", 2)
+key, value := parts[0], parts[1]        // the URL keeps its = signs
+```
+
+Go 1.18 added `Cut`, which is cleaner for this exact case:
+
+```go
+key, value, found := strings.Cut("KEY=value", "=")
+if !found {
+    return fmt.Errorf("malformed line: %q", line)
+}
+```
+
+No slice allocation and the missing-separator case is explicit.
+
+## Building strings
+
+```go
+// For a few pieces, + or Sprintf is fine
+msg := "Hello, " + name + "!"
+msg := fmt.Sprintf("Hello, %s! You have %d messages.", name, count)
+
+// In a loop, use Builder
+var b strings.Builder
+b.Grow(estimatedSize)              // optional, avoids reallocation
+for _, item := range items {
+    b.WriteString(item.Name)
+    b.WriteString(", ")
+}
+result := b.String()
+```
+
+The difference matters at scale. `+=` in a loop allocates a new string every iteration, so ten thousand appends copies roughly fifty million bytes. `Builder` writes into a growing byte slice and converts once.
+
+`Builder` also has `WriteByte`, `WriteRune`, and `Write`, and it implements `io.Writer`, so `fmt.Fprintf(&b, ...)` works.
+
+<Callout type="warn">
+Do not copy a `strings.Builder` after writing to it. It contains a pointer to its buffer and a check that panics if the copy is used. Pass it as `*strings.Builder`, or better, do not pass it at all.
+</Callout>
+
+## Comparison
+
+```go
+strings.EqualFold("Go", "GO")          // true, case insensitive
+strings.Compare("a", "b")              // -1, rarely needed, just use < and >
+```
+
+`EqualFold` is the correct way to compare case insensitively. Lowercasing both sides works for ASCII and gets a few languages wrong, notably Turkish.
+
+For sensitive comparisons such as tokens, use a constant-time comparison instead:
+
+```go
+import "crypto/subtle"
+
+if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1 {
+    // authenticated
+}
+```
+
+Using `==` on a secret leaks information through timing, because it returns as soon as it finds a difference.
+
+## Working with bytes instead
+
+The `bytes` package mirrors `strings` almost exactly, operating on `[]byte`:
+
+```go
+import "bytes"
+
+bytes.Contains(data, []byte("error"))
+bytes.Split(data, []byte("\n"))
+bytes.TrimSpace(data)
+bytes.Equal(a, b)
+
+var buf bytes.Buffer
+buf.WriteString("hello")
+buf.Write(payload)
+result := buf.Bytes()
+```
+
+Use it when the data arrives as bytes, from a file, a network read, or an HTTP body. Converting to a string just to call `strings.Contains` copies the whole thing for nothing.
+
+## The three heavier tools
+
+### strings.Replacer, for many substitutions
+
+```go
+var escaper = strings.NewReplacer(
+    "<", "&lt;",
+    ">", "&gt;",
+    "&", "&amp;",
+    `"`, "&quot;",
+)
+
+safe := escaper.Replace(userInput)
+```
+
+One pass over the input regardless of how many replacements there are, and the `Replacer` is safe for concurrent use, so declare it once at package level.
+
+### strings.Reader, to treat a string as a stream
+
+```go
+r := strings.NewReader("some text")
+
+io.Copy(os.Stdout, r)
+json.NewDecoder(r).Decode(&v)
+http.Post(url, "text/plain", r)
+```
+
+Anything expecting an `io.Reader` will take a string this way, with no intermediate buffer. `bytes.NewReader` does the same for `[]byte`.
+
+### regexp, when patterns are genuinely needed
+
+```go
+import "regexp"
+
+// Compile once, at package level. Compiling in a loop is expensive.
+var emailRe = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+
+emailRe.MatchString("shiva@example.com")     // true
+```
+
+```go
+var logRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}) \[(\w+)\] (.+)$`)
+
+if m := logRe.FindStringSubmatch(line); m != nil {
+    date, level, message := m[1], m[2], m[3]
+}
+```
+
+Named groups make the result readable:
+
+```go
+var re = regexp.MustCompile(`(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})`)
+
+m := re.FindStringSubmatch("2026-08-08")
+for i, name := range re.SubexpNames() {
+    if i > 0 && name != "" {
+        fmt.Printf("%s = %s\n", name, m[i])
+    }
+}
+```
+
+<Callout type="info">
+Go's `regexp` uses RE2, which guarantees linear time matching and therefore cannot suffer catastrophic backtracking. The tradeoff is no backreferences and no lookahead or lookbehind. If you have a pattern from another language using `(?=...)` or `\1`, it will not compile here, and you will need to restructure the logic.
+</Callout>
+
+Regular expressions are slower than plain string functions by roughly an order of magnitude. For a simple prefix check, `strings.HasPrefix` beats a regexp comfortably, and it is easier to read.
+
+## Text and Unicode
+
+```go
+import "unicode"
+
+unicode.IsLetter('a')       // true
+unicode.IsDigit('5')        // true
+unicode.IsSpace(' ')        // true
+unicode.IsUpper('A')        // true
+unicode.ToLower('A')        // 'a'
+```
+
+```go
+import "unicode/utf8"
+
+utf8.RuneCountInString("नमस्ते")     // 6, characters not bytes
+utf8.ValidString(s)                  // is this valid UTF-8
+r, size := utf8.DecodeRuneInString(s) // first rune and its byte width
+```
+
+`utf8.ValidString` is worth using on any text arriving from outside your program. Invalid UTF-8 will not crash Go, but it will produce replacement characters in output and confuse anything downstream that expects valid text.
+
+## A worked example
+
+Parsing a simple configuration format, using several of these together:
+
+```go
+func parseConfig(content string) (map[string]string, error) {
+    cfg := make(map[string]string)
+
+    for i, line := range strings.Split(content, "\n") {
+        line = strings.TrimSpace(line)
+
+        // Skip blanks and comments.
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+
+        key, value, found := strings.Cut(line, "=")
+        if !found {
+            return nil, fmt.Errorf("line %d: expected key=value, got %q", i+1, line)
+        }
+
+        key = strings.TrimSpace(key)
+        value = strings.Trim(strings.TrimSpace(value), `"`)
+
+        if key == "" {
+            return nil, fmt.Errorf("line %d: empty key", i+1)
+        }
+
+        cfg[key] = value
+    }
+
+    return cfg, nil
+}
+```
+
+`Split` to get lines, `TrimSpace` to normalise, `HasPrefix` for comments, `Cut` for the separator, and `Trim` to strip optional quotes. No regular expressions, no dependencies, and the error messages name the line.
+
+Next, let's look at turning those string values into real types.

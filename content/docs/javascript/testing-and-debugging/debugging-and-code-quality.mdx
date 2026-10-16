@@ -1,0 +1,46 @@
+---
+title: Debugging and Code Quality
+description: Trace a failure, use breakpoints, and keep examples maintainable.
+---
+
+When code fails, first reproduce the problem with the smallest input you can. Read the **first relevant stack frame** and note the error type and line. A `ReferenceError` often means a missing name; a `TypeError` often means an operation was attempted on an unsuitable value. Fix the cause, then rerun the same input and a nearby boundary case.
+
+```js title="debug.mjs"
+function firstTitle(tasks) {
+  return tasks[0].title;
+}
+
+console.log(firstTitle([]));
+```
+
+Running `node debug.mjs` throws because `tasks[0]` is `undefined`. Logging `tasks` confirms the empty array, but the better fix is to decide what the function should do for empty input. You might return `null`, throw a clear error, or require a nonempty array as part of the contract. Do not simply add optional chaining everywhere and hide the missing-data problem.
+
+## Use a debugger
+
+In a browser, open developer tools, select **Sources**, set a breakpoint on a line, and trigger the event. In Node, run `node inspect debug.mjs` or start with `node --inspect-brk debug.mjs` and attach your editor's debugger. Step over a line to see how values change, step into a function to follow its implementation, and inspect the call stack to find who passed an unexpected value.
+
+`console.log()` is useful for quick checks, but remove noisy logs after diagnosing. `console.table()` helps inspect arrays of records. `debugger;` creates a breakpoint when a debugger is attached; do not leave it in shipped code unless intentional.
+
+## Keep code readable
+
+Use descriptive names, small functions with clear inputs and outputs, and consistent formatting. Separate domain logic from I/O so tests can call logic without starting a server. Enable linting in a real project to catch unused variables and suspicious patterns. Keep dependencies and generated files out of examples unless the lesson needs them.
+
+**Try it:** Run the example, read the failing line, then rewrite `firstTitle()` to return `null` for an empty array. Test it with both `[]` and `[{ title: "Read" }]`.
+
+## A repeatable debugging loop
+
+1. Reproduce the issue with the smallest reliable steps.
+2. Record the input and expected versus actual result.
+3. Find the first relevant failing line and inspect the values there.
+4. Form one explanation and test it with one small change or experiment.
+5. Fix the underlying cause and rerun the reproduction plus a nearby boundary case.
+
+This loop prevents random edits from hiding the original problem. If a bug is intermittent, record timing, environment, and input so the failing conditions can be narrowed down.
+
+## Quality is behavior plus clarity
+
+Formatting tools keep style consistent; linters flag suspicious patterns; type checkers can catch some mismatched values before runtime. These tools complement tests and review rather than replacing them. Add them when a project benefits from repeatable checks, and keep their configuration aligned with the team's supported runtimes.
+
+When refactoring, change one responsibility at a time and preserve behavior with tests. Clear names, explicit input validation, and small functions make defects easier to find because each piece has fewer possible reasons to fail.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

@@ -1,0 +1,76 @@
+---
+title: Dates and Internationalization
+description: Work with instants, time zones, number formatting, and Unicode text.
+---
+
+JavaScript `Date` represents an instant as milliseconds from the Unix epoch. Display depends on a time zone. Store or exchange instants in an unambiguous form such as an ISO string with `Z` (UTC), then format for the user at the edge of the application.
+
+```js
+const instant = new Date("2025-01-15T10:30:00Z");
+console.log(instant.toISOString()); // 2025-01-15T10:30:00.000Z
+console.log(instant.getTime()); // milliseconds since epoch
+```
+
+Avoid parsing informal strings like `"15/01/2025"`; interpretation can vary. `Date.now()` gives a timestamp. `new Date("bad")` is invalid; `Number.isNaN(date.getTime())` detects it. A `Date` does not by itself model a calendar date without a time zone, so distinguish birthdays and appointments from exact instants.
+
+`Intl` formats values for a locale without building your own punctuation rules:
+
+```js
+const money = new Intl.NumberFormat("en-IN", {
+  style: "currency", currency: "INR",
+});
+console.log(money.format(1234.5));
+
+const display = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium", timeZone: "Asia/Kolkata",
+});
+console.log(display.format(instant));
+```
+
+Exact output can vary with locale data and runtime. For sorting human names, `Intl.Collator` handles locale-specific comparison better than raw code-unit order. Unicode text can have multiple code points per visible character; do not rely on `string.length` as a user-perceived character count.
+
+## Instants, dates, and zones
+
+A JavaScript `Date` stores a timestamp: milliseconds from the Unix epoch. It represents an instant, not a time zone or a calendar date by itself. UTC methods expose that instant in UTC; local methods interpret it using the host's current time zone. Formatting a date does not change the stored timestamp.
+
+Date strings are safest when using the standardized ISO form with an explicit `Z` or numeric offset. Non-standard strings can parse differently across environments. A birthday is not necessarily an instant; storing a date-only value as a timestamp can shift its displayed calendar day for users in another zone. Store date-only values as date strings or use a date/time library with an explicit zone model.
+
+## Locale-aware presentation
+
+Use `Intl.NumberFormat` for localized numbers, currencies, and percentages; `Intl.DateTimeFormat` for dates and times; and `Intl.Collator` for language-sensitive sorting. Formatting is presentation, not validation or storage. Keep a machine-readable value internally and format it when showing it to a person.
+
+```js
+const money = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+console.log(money.format(1234.5));
+```
+
+Do not assume every locale uses a period for decimals, the same date ordering, or the same currency symbol. Pass the locale and time zone when output must be predictable, especially in tests and server-generated reports.
+
+## Think in three layers
+
+An **instant** is a point on the timeline, such as `2025-01-15T10:30:00Z`. A **time zone** maps that instant to local clock fields. A **locale** chooses how those fields are written for a reader. Keeping these separate prevents a common mistake: treating a displayed clock time as if it identified an instant without a time zone.
+
+```js
+const value = new Date("2025-01-15T10:30:00Z");
+const utc = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
+});
+const tokyo = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tokyo",
+});
+console.log(utc.format(value));
+console.log(tokyo.format(value)); // same instant, later local clock
+```
+
+`Intl.NumberFormat` handles grouping, decimal separators, and currency placement for the specified locale. It formats a number; it does not change the arithmetic accuracy of that number. `Intl.Collator` is for language-aware sorting, while `String.prototype.localeCompare()` is convenient for occasional comparisons.
+
+For elapsed time, subtract timestamps: `end.getTime() - start.getTime()`. For calendar questions such as “the same local time tomorrow,” daylight-saving transitions make adding exactly 24 hours incorrect in some zones. Model calendar dates and time zones explicitly when scheduling matters.
+
+**Practice:** Format the same instant in two time zones. Check that `toISOString()` stays the same while the displayed clock time changes.
+
+**Check:** The UTC and Tokyo formatters should show clock times nine hours apart for this January date, while `value.toISOString()` is identical before and after formatting.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

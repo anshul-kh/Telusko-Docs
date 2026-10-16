@@ -1,0 +1,49 @@
+---
+title: Browser Safety and Accessibility
+description: Handle untrusted content and build interactions that work beyond a mouse.
+---
+
+A browser runs code near user data, external responses, and HTML. The most important safety rule is to treat strings from users or a network response as **data**, never as executable markup. `innerHTML` parses a string as HTML; `textContent` inserts the string as plain text.
+
+```js
+const title = new URLSearchParams(location.search).get("title") ?? "Untitled";
+const heading = document.querySelector("h1");
+heading.textContent = title; // safe text, even if title contains <script>
+```
+
+If `heading.innerHTML = title` were used instead, markup supplied in the URL could change the page or run code. This is a form of cross-site scripting (XSS). If you truly need rich user-authored HTML, use a well-maintained sanitizer and an appropriate Content Security Policy; a hand-written regex is not a safe HTML sanitizer. Never put secrets in browser JavaScript, because users can inspect downloaded scripts and network requests.
+
+## Make interactions usable
+
+Use semantic HTML before adding JavaScript. A `<button>` already supports keyboard activation and focus; a clickable `<div>` does not. Connect labels to form controls with matching `for` and `id`, show errors near the field, and avoid removing visible focus indicators. For an action that updates a small status message, `aria-live="polite"` can announce it.
+
+```html
+<label for="search">Search tasks</label>
+<input id="search" type="search">
+<button type="button" id="clear">Clear</button>
+<p id="status" aria-live="polite"></p>
+```
+
+When a dialog opens, move focus inside it and return focus to the trigger when it closes. When content disappears, make sure focus is not stranded on a removed node. Keep buttons as buttons and links as links; they represent different actions.
+
+## Accessibility beyond labels
+
+Keyboard users need to reach every interactive control in a logical order. Preserve a visible focus indicator, do not rely on color alone to convey state, and ensure text has sufficient contrast. Use headings in a meaningful hierarchy and give images useful alternative text when they communicate information; decorative images should not create redundant announcements.
+
+When content updates asynchronously, announce important status changes without moving focus unnecessarily. Form errors should identify the field, explain how to fix it, and be programmatically associated with that control. Test with keyboard navigation and at least one screen reader when building a substantial interface.
+
+## Network boundaries
+
+CORS controls which cross-origin responses browser scripts may read. It is enforced by the browser and configured by the server; it is not a substitute for authentication or authorization. Even with CORS, validate server data before using it. If you create a URL from input, constrain allowed protocols and origins when it will be used for navigation or requests.
+
+**Try it:** Put `<strong>Hello</strong>` in a query parameter and display it with `textContent`; notice that the angle brackets appear as text. Then navigate your small project using only Tab and Enter to identify any controls that cannot be reached.
+
+The [MDN XSS guide](https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/XSS) explains the browser security model in more depth.
+
+## Storage and privacy
+
+Browser storage belongs to an origin and can be read or modified by JavaScript running on that origin. Treat stored values as untrusted input when reading them back; they can be stale, malformed, or manually edited. Minimize personal data, set an expiration or cleanup policy where appropriate, and do not store secrets in `localStorage` or `sessionStorage`.
+
+Content Security Policy (CSP) can limit where scripts and other resources load from, reducing the impact of some injection mistakes. It complements safe DOM APIs and server-side defenses; it does not make unsafe HTML insertion safe by itself. Keep dependencies updated and avoid loading scripts from sources you do not trust.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>

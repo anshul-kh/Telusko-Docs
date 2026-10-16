@@ -1,0 +1,160 @@
+---
+title: "Project 1: Browser Task Tracker"
+description: Build a complete accessible task list with events and localStorage.
+---
+
+This project joins the browser lessons into one working app. You can add a task, mark it complete, delete it, and reload without losing your list. It uses plain JavaScript so every moving part is visible. Create a folder named `task-tracker` and save the three files below in it.
+
+```html title="index.html"
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Task tracker</title>
+    <style>
+      body { font: 1rem system-ui; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; }
+      form { display: flex; gap: .5rem; }
+      input { flex: 1; min-width: 0; }
+      li { display: flex; align-items: center; gap: .5rem; margin: .75rem 0; }
+      li span { flex: 1; overflow-wrap: anywhere; }
+      li.done span { text-decoration: line-through; }
+    </style>
+  </head>
+  <body>
+    <h1>Tasks</h1>
+    <form id="task-form">
+      <label for="title">New task</label>
+      <input id="title" required maxlength="100">
+      <button type="submit">Add</button>
+    </form>
+    <p id="status" aria-live="polite"></p>
+    <ul id="tasks"></ul>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
+```
+
+```js title="app.js"
+const form = document.querySelector("#task-form");
+const titleInput = document.querySelector("#title");
+const list = document.querySelector("#tasks");
+const status = document.querySelector("#status");
+const storageKey = "javascript-course-tasks";
+
+function loadTasks() {
+  try {
+    const value = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((task) =>
+      task && typeof task.id === "string" &&
+      typeof task.title === "string" && typeof task.done === "boolean"
+    );
+  } catch {
+    return [];
+  }
+}
+
+let tasks = loadTasks();
+
+function saveTasks() {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(tasks));
+    if (status.textContent === "Could not save tasks in this browser.") updateStatus();
+    return true;
+  } catch {
+    status.textContent = "Could not save tasks in this browser.";
+    return false;
+  }
+}
+
+function updateStatus() {
+  status.textContent = `${tasks.length} task${tasks.length === 1 ? "" : "s"}`;
+}
+
+function render() {
+  list.replaceChildren();
+  for (const task of tasks) {
+    const item = document.createElement("li");
+    if (task.done) item.classList.add("done");
+
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = task.done;
+    check.setAttribute("aria-label", `Complete ${task.title}`);
+    check.addEventListener("change", () => {
+      task.done = check.checked;
+      saveTasks();
+      item.classList.toggle("done", task.done);
+    });
+
+    const label = document.createElement("span");
+    label.textContent = task.title;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Delete";
+    remove.setAttribute("aria-label", `Delete ${task.title}`);
+    remove.addEventListener("click", () => {
+      tasks = tasks.filter((entry) => entry.id !== task.id);
+      saveTasks();
+      render();
+      titleInput.focus();
+    });
+
+    item.append(check, label, remove);
+    list.append(item);
+  }
+  if (status.textContent !== "Could not save tasks in this browser.") updateStatus();
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const title = titleInput.value.trim();
+  if (!title || title.length > 100) return;
+  tasks.push({ id: crypto.randomUUID(), title, done: false });
+  saveTasks();
+  titleInput.value = "";
+  render();
+  titleInput.focus();
+});
+
+render();
+```
+
+Serve the page from localhost so `localStorage` has a predictable origin and `crypto.randomUUID()` is available. Save this small server in the same folder:
+
+```js title="server.mjs"
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+
+createServer(async (request, response) => {
+  const path = new URL(request.url, "http://localhost").pathname;
+  const name = path === "/" ? "index.html" : path === "/app.js" ? "app.js" : null;
+  if (!name) {
+    response.writeHead(404).end("Not found");
+    return;
+  }
+  try {
+    const body = await readFile(new URL(`./${name}`, import.meta.url));
+    const type = name.endsWith(".js") ? "text/javascript" : "text/html";
+    response.writeHead(200, { "Content-Type": type }).end(body);
+  } catch {
+    response.writeHead(500).end("File unavailable");
+  }
+}).listen(4173, "127.0.0.1");
+```
+
+Run `node server.mjs`, then open `http://127.0.0.1:4173/` in your browser. Keep the terminal open while using the app; press Ctrl+C to stop the server.
+
+## Trace one task through the app
+
+Submitting the form prevents navigation, trims the input, creates a task with a unique ID, and stores the updated array as JSON. `render()` then clears and rebuilds the list from state. The title goes into `textContent`, so markup typed by a user stays text. Each checkbox updates its task object, saves again, and changes only its row's style, so keyboard focus stays on the checkbox. Delete filters by ID so duplicate titles are handled correctly. `loadTasks()` returns an empty list for invalid JSON or a non-array value and skips invalid entries in an array. The project uses `crypto.randomUUID()`, which requires a secure context in browsers; localhost and HTTPS work. Browser storage behavior under `file://` is not guaranteed, which is why this project uses localhost.
+
+## Check your work
+
+Add two tasks, mark one complete, reload, and confirm its state remains. Delete one and reload again. Enter `<b>Hello</b>` as a title and verify it appears literally. Navigate with Tab, Space, and Enter to check keyboard behavior.
+
+**Extend it:** Add buttons to show all, active, or completed tasks. Keep the source `tasks` array intact and filter only the items rendered. Then add a count of unfinished tasks and a test for the filtering function.
+
+Written By: <a href="https://www.linkedin.com/in/shivasrivastava1/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Shiva Srivastava <ExternalLink className="w-4 h-4" /></a>
