@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { gsap } from '@/lib/gsap';
 import { useArcFillHover } from '@/lib/useArcFillHover';
+import { PLATFORMS } from '@/lib/platforms';
 
 export function TeluskoLearnCta({ className = '' }: { className?: string }) {
   const { fillRef, expandFill, collapseFill } = useArcFillHover();
@@ -30,7 +31,7 @@ export function TeluskoLearnCta({ className = '' }: { className?: string }) {
 
   return (
     <a
-      href="https://learn.telusko.com"
+      href={PLATFORMS.teluskoLearn}
       target="_blank"
       rel="noopener noreferrer"
       onMouseEnter={onEnter}

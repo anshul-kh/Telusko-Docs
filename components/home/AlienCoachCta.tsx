@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { useRef } from 'react';
 import { gsap } from '@/lib/gsap';
 import { useArcFillHover } from '@/lib/useArcFillHover';
+import { PLATFORMS } from '@/lib/platforms';
 
 export function AlienCoachCta() {
   const { fillRef, expandFill, collapseFill } = useArcFillHover();
@@ -26,7 +27,7 @@ export function AlienCoachCta() {
 
   return (
     <a
-      href="https://aliencoach.com"
+      href={PLATFORMS.alienCoach}
       target="_blank"
       rel="noopener noreferrer"
       onMouseEnter={onEnter}

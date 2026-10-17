@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { Marquee } from './Marquee';
+import { PLATFORMS } from '@/lib/platforms';
 
 export interface Course {
   id: string;
@@ -16,7 +17,6 @@ const BADGES = [
   { emoji: '◆', label: 'New on Telusko', color: '#B8D94E' },
 ];
 
-const COURSE_BASE_URL = 'https://learn.telusko.com/courses';
 const MARQUEE_SPEED = 24;
 
 export function CoursePromoRow({ courses }: { courses: Course[] }) {
@@ -34,7 +34,7 @@ export function CoursePromoRow({ courses }: { courses: Course[] }) {
         return (
           <a
             key={`${course.id}-${i}`}
-            href={`${COURSE_BASE_URL}/${course.slug}`}
+            href={`${PLATFORMS.teluskoLearnCourses}/${course.slug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="home-promo-card flex shrink-0 items-center gap-3.5"

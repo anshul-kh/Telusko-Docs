@@ -1,6 +1,5 @@
 import { CoursePromoRow, type Course } from './CoursePromoRow';
-
-const COURSES_API_URL = 'https://api.telusko.com/api/v1/courses';
+import { PLATFORMS } from '@/lib/platforms';
 
 interface ApiCourse {
   id: string;
@@ -18,7 +17,7 @@ interface ApiResponse {
 
 async function fetchFeaturedCourses(): Promise<Course[]> {
   try {
-    const res = await fetch(COURSES_API_URL, { next: { revalidate: 900 } });
+    const res = await fetch(PLATFORMS.teluskoCoursesApi, { next: { revalidate: 900 } });
     if (!res.ok) return [];
 
     const data = (await res.json()) as ApiResponse;
