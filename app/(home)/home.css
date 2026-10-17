@@ -19,6 +19,7 @@ html:has(.home-shell) {
   --home-surface-border: rgba(14, 14, 14, 0.1);
   --home-lime: #b8d94e;
   --home-lime-text: #5c7a17;
+  --home-pill-ink: #181818;
 
   background: var(--home-bg);
   color: var(--home-foreground);

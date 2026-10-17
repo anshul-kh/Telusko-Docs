@@ -1,8 +1,7 @@
 'use client';
 
-import Link from 'next/link';
-import { Icon } from '@iconify/react';
 import type { CSSProperties } from 'react';
+import { BentoPillLink } from './BentoPillLink';
 import { useFallingPills } from '@/lib/useFallingPills';
 import type { TopicLink } from '@/lib/topics';
 
@@ -31,10 +30,9 @@ export function PillCluster({ pillTopics }: { pillTopics: TopicLink[] }) {
       {PILL_ITEMS.map((item, i) => {
         const style: CSSProperties = {
           background: item.bg,
-          color: '#181818',
           left: item.x,
           top: item.y,
-          border: item.kind === 'link' && item.border ? '1.5px solid #181818' : undefined,
+          border: item.kind === 'link' && item.border ? '1.5px solid var(--home-pill-ink)' : undefined,
         };
 
         if (item.kind === 'chip') {
@@ -43,7 +41,7 @@ export function PillCluster({ pillTopics }: { pillTopics: TopicLink[] }) {
               key={`chip-${i}`}
               data-rotate={item.rotate}
               className="bento-pill flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold lg:absolute"
-              style={style}
+              style={{ ...style, color: 'var(--home-pill-ink)' }}
             >
               {'</>'}
             </span>
@@ -52,16 +50,14 @@ export function PillCluster({ pillTopics }: { pillTopics: TopicLink[] }) {
 
         const topic = pillTopics.find((t) => t.slug === item.slug);
         return (
-          <Link
+          <BentoPillLink
             key={item.slug}
             href={topic?.href ?? '/docs'}
-            data-rotate={item.rotate}
-            className="bento-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold lg:absolute"
+            icon={item.icon}
+            label={topic?.title ?? item.slug}
             style={style}
-          >
-            <Icon icon={item.icon} className="h-4 w-4" />
-            {topic?.title ?? item.slug}
-          </Link>
+            rotate={item.rotate}
+          />
         );
       })}
     </div>
