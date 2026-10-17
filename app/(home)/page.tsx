@@ -13,15 +13,15 @@ export default function HomePage() {
 
   return (
     <main className="relative">
-      <div className="relative mx-auto max-w-[1920px] border-x" style={{ borderColor: 'var(--home-border)' }}>
-        <SiteHeader
-          navTopics={navTopics}
-          promoSlot={
-            <Suspense fallback={<CoursePromoSkeleton />}>
-              <CoursePromoStrip />
-            </Suspense>
-          }
-        />
+      <SiteHeader
+        navTopics={navTopics}
+        promoSlot={
+          <Suspense fallback={<CoursePromoSkeleton />}>
+            <CoursePromoStrip />
+          </Suspense>
+        }
+      />
+      <div className="relative mx-auto max-w-[1920px]">
         <Hero />
         <TechTicker topics={tickerTopics} />
         <BentoGrid pillTopics={pillTopics} nextFive={bentoNextFive} />
