@@ -11,6 +11,7 @@ html:has(.home-shell) {
   --home-bg: #faf9f4;
   --home-border: rgba(14, 14, 14, 0.12);
   --home-foreground: #0e0e0e;
+  --home-foreground-strong: #000;
   --home-foreground-muted: rgba(14, 14, 14, 0.78);
   --home-foreground-subtle: rgba(14, 14, 14, 0.65);
   --home-foreground-faint: rgba(14, 14, 14, 0.5);
@@ -31,6 +32,7 @@ html:has(.home-shell) {
   --home-bg: #0e0e0e;
   --home-border: #1a1a1a;
   --home-foreground: #fffffd;
+  --home-foreground-strong: #fff;
   --home-foreground-muted: rgba(255, 255, 253, 0.82);
   --home-foreground-subtle: rgba(255, 255, 253, 0.7);
   --home-foreground-faint: rgba(255, 255, 253, 0.6);
@@ -49,6 +51,14 @@ html:has(.home-shell) {
 
 .home-shell .home-telusko-cta-label {
   color: var(--home-lime-text);
+}
+
+.home-shell .home-pill-text {
+  color: var(--home-pill-ink);
+}
+
+.home-shell .home-ticker-text {
+  color: var(--home-foreground-faint);
 }
 
 .home-shell .font-mono-home {
@@ -113,10 +123,6 @@ html:has(.home-shell) {
 .home-shell .home-course-media {
   background: var(--home-surface-strong);
   border: 1px solid var(--home-surface-border);
-}
-
-.home-shell .home-tech-ticker-link:hover {
-  color: var(--home-foreground);
 }
 
 .home-shell .home-no-scrollbar {

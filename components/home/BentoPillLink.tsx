@@ -35,7 +35,13 @@ export function BentoPillLink({ href, icon, label, style, rotate, className = ''
     gsap.to(linkIconRef.current, { scale: 0, duration: 0.25, ease: 'power2.in', overwrite: true });
     if (!textRef.current) return;
     const restColor = getComputedStyle(textRef.current).getPropertyValue('--home-pill-ink');
-    gsap.to(textRef.current, { color: restColor, duration: 0.45, ease: 'power2.inOut', overwrite: true });
+    gsap.to(textRef.current, {
+      color: restColor,
+      duration: 0.45,
+      ease: 'power2.inOut',
+      overwrite: true,
+      onComplete: () => gsap.set(textRef.current, { clearProps: 'color' }),
+    });
   }
 
   return (
@@ -53,7 +59,7 @@ export function BentoPillLink({ href, icon, label, style, rotate, className = ''
         className="pointer-events-none absolute inset-0"
         style={{ background: 'var(--home-foreground)', clipPath: 'circle(0% at 0% 0%)' }}
       />
-      <span ref={textRef} className="relative inline-flex items-center gap-2" style={{ color: 'var(--home-pill-ink)' }}>
+      <span ref={textRef} className="home-pill-text relative inline-flex items-center gap-2">
         <Icon icon={icon} className="h-4 w-4" />
         {label}
         <span ref={linkIconRef} aria-hidden="true" className="inline-flex origin-left scale-0">

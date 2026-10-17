@@ -1,6 +1,5 @@
-import Link from 'next/link';
-import { Icon } from '@iconify/react';
 import { Marquee } from './Marquee';
+import { TechTickerLink } from './TechTickerLink';
 import type { TopicLink } from '@/lib/topics';
 
 const TICKER_ICONS: Record<string, string> = {
@@ -27,15 +26,12 @@ export function TechTicker({ topics }: { topics: TopicLink[] }) {
       trackClassName="flex w-max items-center gap-20 px-10"
     >
       {items.map((topic, i) => (
-        <Link
+        <TechTickerLink
           key={`${topic.slug}-${i}`}
           href={topic.href}
-          className="home-tech-ticker-link flex shrink-0 items-center gap-5 text-md font-semibold transition-colors sm:text-xl"
-          style={{ color: 'var(--home-foreground-faint)' }}
-        >
-          <Icon icon={TICKER_ICONS[topic.slug] ?? 'carbon:code'} className="h-8 w-8 sm:h-9 sm:w-9" />
-          {topic.title}
-        </Link>
+          icon={TICKER_ICONS[topic.slug] ?? 'carbon:code'}
+          label={topic.title}
+        />
       ))}
     </Marquee>
   );
