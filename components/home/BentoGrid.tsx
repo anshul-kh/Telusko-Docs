@@ -12,7 +12,7 @@ interface BentoGridProps {
 const BENTO_ICONS: Record<string, string> = {
   'claude-code': 'logos:claude-icon',
   'system-design': 'flat-color-icons:engineering',
-  devops: 'selfhst:azure-devops',
+  devops: 'fluent-emoji-flat:infinity',
   docker: 'catppuccin:docker',
   linux: 'logos:linux-tux',
 };
