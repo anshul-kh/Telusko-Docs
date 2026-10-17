@@ -14,7 +14,7 @@ export function TeluskoLearnCta({ className = '' }: { className?: string }) {
     expandFill();
     if (!textRef.current) return;
     const hoverColor = getComputedStyle(textRef.current).getPropertyValue('--home-bg');
-    gsap.to(textRef.current, { color: hoverColor, duration: 0.5, ease: 'power2.out' });
+    gsap.to(textRef.current, { color: hoverColor, duration: 0.5, ease: 'power2.out', overwrite: true });
   }
 
   function onLeave() {
@@ -25,6 +25,7 @@ export function TeluskoLearnCta({ className = '' }: { className?: string }) {
       color: restingColor,
       duration: 0.45,
       ease: 'power2.inOut',
+      overwrite: true,
       onComplete: () => gsap.set(textRef.current, { clearProps: 'color' }),
     });
   }

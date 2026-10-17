@@ -13,16 +13,16 @@ export function AlienCoachCta() {
 
   function onEnter() {
     expandFill();
-    gsap.to(arrowRef.current, { rotate: -45, duration: 0.4, ease: 'power2.out' });
+    gsap.to(arrowRef.current, { rotate: -45, duration: 0.4, ease: 'power2.out', overwrite: true });
     if (!textRef.current) return;
     const hoverColor = getComputedStyle(textRef.current).getPropertyValue('--home-bg');
-    gsap.to(textRef.current, { color: hoverColor, duration: 0.5, ease: 'power2.out' });
+    gsap.to(textRef.current, { color: hoverColor, duration: 0.5, ease: 'power2.out', overwrite: true });
   }
 
   function onLeave() {
     collapseFill();
-    gsap.to(arrowRef.current, { rotate: 0, duration: 0.4, ease: 'power2.out' });
-    gsap.to(textRef.current, { color: '#181818', duration: 0.45, ease: 'power2.inOut' });
+    gsap.to(arrowRef.current, { rotate: 0, duration: 0.4, ease: 'power2.out', overwrite: true });
+    gsap.to(textRef.current, { color: '#181818', duration: 0.45, ease: 'power2.inOut', overwrite: true });
   }
 
   return (
