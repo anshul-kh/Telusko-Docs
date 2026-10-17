@@ -27,27 +27,31 @@ export function useFallingPills<T extends HTMLElement = HTMLDivElement>(dependen
         const pills = gsap.utils.toArray<HTMLElement>('.bento-pill', containerRef.current);
         gsap.set(pills, (i: number) => ({ y: FALL_START_Y - i * FALL_STAGGER_Y, rotation: 0, autoAlpha: 0 }));
 
+        const revealTweens: gsap.core.Tween[] = [];
         const trigger = ScrollTrigger.create({
           trigger: containerRef.current,
           start: 'top 85%',
           once: true,
           onEnter: () => {
             pills.forEach((pill, i) => {
-              gsap.to(pill, {
-                y: 0,
-                rotation: restRotationOf(pill),
-                autoAlpha: 1,
-                duration: FALL_DURATION,
-                delay: i * FALL_STAGGER_DELAY,
-                ease: FALL_EASE,
-              });
+              revealTweens.push(
+                gsap.to(pill, {
+                  y: 0,
+                  rotation: restRotationOf(pill),
+                  autoAlpha: 1,
+                  duration: FALL_DURATION,
+                  delay: i * FALL_STAGGER_DELAY,
+                  ease: FALL_EASE,
+                }),
+              );
             });
           },
         });
 
         return () => {
+          revealTweens.forEach((tween) => tween.kill());
           trigger.kill();
-          gsap.set(pills, { clearProps: 'all' });
+          gsap.set(pills, { clearProps: 'transform,opacity,visibility' });
         };
       });
 

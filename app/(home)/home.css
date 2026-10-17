@@ -57,6 +57,18 @@ html:has(.home-shell) {
   color: var(--home-pill-ink);
 }
 
+.home-shell .bento-pill {
+  left: auto;
+  top: auto;
+}
+
+@media (min-width: 1024px) {
+  .home-shell .bento-pill {
+    left: var(--pill-left, auto);
+    top: var(--pill-top, auto);
+  }
+}
+
 .home-shell .home-ticker-text {
   color: var(--home-foreground-faint);
 }

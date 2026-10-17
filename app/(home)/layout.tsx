@@ -1,5 +1,6 @@
 import { Manrope, JetBrains_Mono } from 'next/font/google';
 import './home.css';
+import { BfCacheReset } from '@/components/home/BfCacheReset';
 
 const manrope = Manrope({
   subsets: ['latin'],
@@ -15,6 +16,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <div className={`${manrope.variable} ${jetbrainsMono.variable} home-shell`}>
       {children}
+      <BfCacheReset />
     </div>
   );
 }

@@ -1,14 +1,28 @@
 'use client';
 
 import { useGSAP } from '@gsap/react';
-import { gsap, ScrollTrigger } from '@/lib/gsap';
+import { gsap } from '@/lib/gsap';
 
 export function SpineRevealTrigger() {
   useGSAP(() => {
-    gsap.set('.home-spine', { y: 24, autoAlpha: 0 });
-    ScrollTrigger.batch('.home-spine', {
-      start: 'top 90%',
-      onEnter: (batch) => gsap.to(batch, { y: 0, autoAlpha: 1, stagger: 0.12, duration: 0.7, ease: 'power3.out' }),
+    const spines = gsap.utils.toArray<HTMLElement>('.home-spine');
+    spines.forEach((spine, i) => {
+      gsap.fromTo(
+        spine,
+        { y: 24, autoAlpha: 0 },
+        {
+          y: 0,
+          autoAlpha: 1,
+          duration: 0.7,
+          delay: i * 0.12,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: spine,
+            start: 'top 90%',
+            once: true,
+          },
+        },
+      );
     });
   });
 

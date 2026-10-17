@@ -1,15 +1,28 @@
 'use client';
 
 import { useGSAP } from '@gsap/react';
-import { gsap, ScrollTrigger } from '@/lib/gsap';
+import { gsap } from '@/lib/gsap';
 
 export function BentoRevealTrigger() {
   useGSAP(() => {
     const cards = gsap.utils.toArray<HTMLElement>('.bento-card');
-    gsap.set(cards, { y: 24 });
-    ScrollTrigger.batch(cards, {
-      start: 'top 85%',
-      onEnter: (batch) => gsap.to(batch, { autoAlpha: 1, y: 0, stagger: 0.12, duration: 0.6, ease: 'power3.out' }),
+    cards.forEach((card, i) => {
+      gsap.fromTo(
+        card,
+        { y: 24, autoAlpha: 0 },
+        {
+          y: 0,
+          autoAlpha: 1,
+          duration: 0.6,
+          delay: i * 0.12,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: card,
+            start: 'top 85%',
+            once: true,
+          },
+        },
+      );
     });
   });
 

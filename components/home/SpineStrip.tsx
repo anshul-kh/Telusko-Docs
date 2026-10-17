@@ -30,10 +30,11 @@ export function SpineStrip({ spine }: { spine: SpineLink }) {
         gsap.set(desktopArrowRef.current, { rotate: 0 });
         gsap.set(descriptionRef.current, { autoAlpha: 0, maxHeight: 0, overflow: 'hidden' });
 
-        return () =>
-          gsap.set([columnRef.current, contentRef.current, desktopArrowRef.current, descriptionRef.current], {
-            clearProps: 'all',
-          });
+        return () => {
+          gsap.set(columnRef.current, { clearProps: 'transform,opacity,visibility,flexGrow' });
+          gsap.set([contentRef.current, desktopArrowRef.current], { clearProps: 'transform,opacity,visibility' });
+          gsap.set(descriptionRef.current, { clearProps: 'all' });
+        };
       });
     },
     { scope: columnRef },
@@ -41,7 +42,7 @@ export function SpineStrip({ spine }: { spine: SpineLink }) {
 
   function onEnter() {
     if (isDesktopViewport()) {
-      gsap.to(columnRef.current, { flexGrow: HOVER_FLEX, duration: 0.5, ease: EASE, overwrite: true });
+      gsap.to(columnRef.current, { flexGrow: HOVER_FLEX, duration: 0.5, ease: EASE, overwrite: 'auto' });
       gsap.to(desktopArrowRef.current, { rotate: 45, duration: 0.4, ease: EASE, overwrite: true });
       if (spine.description) {
         gsap.to(descriptionRef.current, {
@@ -60,7 +61,7 @@ export function SpineStrip({ spine }: { spine: SpineLink }) {
 
   function onLeave() {
     if (isDesktopViewport()) {
-      gsap.to(columnRef.current, { flexGrow: REST_FLEX, duration: 0.5, ease: EASE, overwrite: true });
+      gsap.to(columnRef.current, { flexGrow: REST_FLEX, duration: 0.5, ease: EASE, overwrite: 'auto' });
       gsap.to(desktopArrowRef.current, { rotate: 0, duration: 0.4, ease: EASE, overwrite: true });
       gsap.to(descriptionRef.current, {
         autoAlpha: 0,

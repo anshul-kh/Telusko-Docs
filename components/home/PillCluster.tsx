@@ -28,12 +28,12 @@ export function PillCluster({ pillTopics }: { pillTopics: TopicLink[] }) {
       className="relative mt-6 flex flex-wrap items-center gap-2.5 lg:absolute lg:bottom-8 lg:right-8 lg:mt-0 lg:h-[110px] lg:w-[400px]"
     >
       {PILL_ITEMS.map((item, i) => {
-        const style: CSSProperties = {
+        const style = {
           background: item.bg,
-          left: item.x,
-          top: item.y,
+          '--pill-left': `${item.x}px`,
+          '--pill-top': `${item.y}px`,
           border: item.kind === 'link' && item.border ? '1.5px solid var(--home-pill-ink)' : undefined,
-        };
+        } as CSSProperties;
 
         if (item.kind === 'chip') {
           return (
