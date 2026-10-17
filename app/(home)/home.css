@@ -137,6 +137,12 @@ html:has(.home-shell) {
   border: 1px solid var(--home-surface-border);
 }
 
+.home-shell .home-hero-search-glow {
+  box-shadow:
+    0 0 0 4px rgba(184, 217, 78, 0.18),
+    0 10px 30px -10px rgba(184, 217, 78, 0.5);
+}
+
 .home-shell .home-no-scrollbar {
   scrollbar-width: none;
 }
