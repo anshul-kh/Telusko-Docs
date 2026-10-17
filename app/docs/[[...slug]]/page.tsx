@@ -1,6 +1,5 @@
-// export const dynamic = 'force-dynamic';
-export const revalidate = 900; // cache for 15 mins (we can change it based on our requirements)
-// export const dynamicParams = true;
+// Each page is rendered on its first visit and then served from the shared cache until the next deploy
+export const revalidate = false;
 
 import { getPageImage, source } from '@/lib/source';
 import {
@@ -25,9 +24,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   
   if (!page) notFound();
 
-  const MDX = page.data.body;
-
-  const {lastModified} = page.data;
+  const { body: MDX, toc, lastModified } = await page.data.load();
 
    const markdownUrl = params.slug?.length 
   ? `/api/docs/${params.slug.join('/')}/raw`
@@ -36,7 +33,7 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   //  console.log(params.slug,'params slug')
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full} lastUpdate={lastModified ? new Date(lastModified) : undefined} tableOfContent={{
+    <DocsPage toc={toc} full={page.data.full} lastUpdate={lastModified ? new Date(lastModified) : undefined} tableOfContent={{
         style: 'clerk',
         enabled: true,
       }}
@@ -70,9 +67,11 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   );
 }
 
-// export async function generateStaticParams() {
-//   return source.generateParams();
-// }
+// Nothing is pre-rendered at build time (all pages would make the build too large);
+// returning [] lets every page be cached on first visit instead
+export async function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata(
   props: PageProps<'/docs/[[...slug]]'>,

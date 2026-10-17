@@ -1,0 +1,149 @@
+---
+title: grep Command - Search Text in Files
+---
+
+## What is `grep`?
+
+The `grep` command is a Linux utility used to **search for specific text or patterns inside files**. It examines a file line by line and displays the lines that match the given pattern.
+
+`grep` is especially useful when working with application logs, configuration files, source code, and large text files. Instead of reading an entire file, you can quickly find the information you need.
+
+For example, if an application log contains hundreds of lines, `grep` can help you find only the lines containing `ERROR`.
+
+### Basic Syntax
+
+```
+grep [options] "pattern" filename
+```
+
+- **`pattern`** : The text or pattern you want to search for.
+- **`filename`** : The file in which you want to search.
+- **`options`** : Optional flags that control how the search works.
+
+---
+
+## Common `grep` Options
+
+### 1. Basic Search
+
+```
+grep "Telusko" telusko.txt
+```
+
+Displays every line containing `Telusko` in `telusko.txt`.
+
+By default, `grep` is **case-sensitive**, so `Telusko`, `telusko`, and `TELUSKO` are treated as different patterns.
+
+### 2. Case-Insensitive Search (`-i`)
+
+Use `-i` when you want to match text regardless of uppercase or lowercase letters.
+
+```
+grep -i "warning" app.log
+```
+
+This command matches `WARNING`, `Warning`, `warning`, and other combinations of letter case.
+
+Practical examples:
+
+```
+grep -i "exception" error.log
+grep -i "failed" app.log
+```
+
+These commands help locate exceptions and failed operations in log files.
+
+### 3. Count Matching Lines (`-c`)
+
+Use `-c` to display the number of lines that match a pattern instead of displaying the matching lines themselves.
+
+```
+grep -c "Exception" error.log
+```
+
+For example, if five lines contain `Exception`, the output is:
+
+```
+5
+```
+
+**Note:** `-c` counts matching lines, not the total number of occurrences. A line containing the pattern multiple times is counted only once.
+
+### 4. Exclude Matching Lines (`-v`)
+
+Use `-v` to display lines that **do not match** the specified pattern.
+
+```
+grep -v "WARNING" app.log
+```
+
+This displays all lines that do not contain `WARNING`, making it useful for filtering unwanted messages from logs.
+
+To exclude matches regardless of case:
+
+```
+grep -iv "warning" app.log
+```
+
+### 5. Display Line Numbers (`-n`)
+
+Use `-n` to display each matching line with its line number.
+
+```
+grep -n "ERROR" app.log
+```
+
+Example output:
+
+```
+12:ERROR: Database connection failed
+27:ERROR: Request processing failed
+```
+
+Line numbers make it easier to locate matching entries in the original file.
+
+### 6. Combine Multiple Options
+
+You can combine options to perform more useful searches.
+
+```
+grep -in "warning" app.log
+```
+
+This command:
+
+- Ignores case differences (`-i`).
+- Displays line numbers (`-n`).
+
+You can also count matching lines without considering case:
+
+```
+grep -ic "error" app.log
+```
+
+---
+
+## Quick Reference
+
+| Option    | Purpose                           | Example                     |
+| --------- | --------------------------------- | --------------------------- |
+| No option | Case-sensitive search             | `grep "error" file.txt`     |
+| `-i`      | Ignore case                       | `grep -i "error" file.txt`  |
+| `-c`      | Count matching lines              | `grep -c "error" file.txt`  |
+| `-v`      | Exclude matching lines            | `grep -v "error" file.txt`  |
+| `-n`      | Show line numbers                 | `grep -n "error" file.txt`  |
+| `-in`     | Ignore case and show line numbers | `grep -in "error" file.txt` |
+
+---
+
+## Summary
+
+- `grep` searches files for text patterns and prints matching lines.
+- Searches are case-sensitive by default; use `-i` to ignore case.
+- Use `-c` to count matching lines, `-v` to exclude matches, and `-n` to display line numbers.
+- Options can be combined to make searches more effective.
+- `grep` is an essential tool for investigating logs, checking configuration files, and finding relevant text in large files.
+
+**Remember:** When troubleshooting a Linux application, `grep` helps you find relevant messages quickly without manually reading the entire log file.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>

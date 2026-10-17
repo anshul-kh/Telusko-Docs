@@ -1,0 +1,11 @@
+{
+    "title": "Linux Users, Permissions & Ownership",
+    "pages": [
+        "root-sudo-su.mdx",
+        "file-permissions-symbolic.mdx",
+        "numeric-file-permissions.mdx",
+        "user-management.mdx",
+        "group-managemen.mdx",
+        "file-ownership-chown.mdx"
+    ]
+}

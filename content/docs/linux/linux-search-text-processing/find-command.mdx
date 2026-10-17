@@ -1,0 +1,171 @@
+---
+title: find Command - Search Files & Directories
+---
+
+## What Is the `find` Command?
+
+The `find` command searches for files and directories based on criteria such as name, type, and whether they are empty.
+
+Unlike tools that search an existing filename database, `find` walks through the directory structure from a specified starting location. By default, it searches recursively, including subdirectories.
+
+It is useful for locating files, finding empty directories, and managing files across a Linux system.
+
+---
+
+### Basic Syntax
+
+```bash
+find [path] [expression]
+```
+
+- **`path`** : The directory where the search begins. Use `.` for the current directory.
+- **`expression`** : The conditions used to identify matching files or directories.
+
+---
+
+## Searching by Name
+
+### 1. Find a Specific File
+
+```bash
+find . -name "telusko.txt"
+```
+
+Searches for entries named `telusko.txt` in the current directory and all its subdirectories.
+
+The `-name` option performs a case-sensitive name match.
+
+For a case-insensitive search, use `-iname`:
+
+```bash
+find . -iname "telusko.txt"
+```
+
+This also matches names such as `Telusko.txt` and `TELUSKO.TXT`.
+
+### 2. Find Files by Extension
+
+Use the wildcard `*` to match multiple filenames.
+
+```bash
+find . -name "*.txt"
+```
+
+This finds entries whose names end in `.txt`, including files in nested directories.
+
+Similarly, to find log files:
+
+```bash
+find . -name "*.log"
+```
+
+**Note:** Keep the wildcard pattern in quotes so the shell passes it to `find` instead of expanding it before the command runs.
+
+### 3. Search in a Specific Directory
+
+```bash
+find /home -name "*.txt"
+```
+
+Searches for `.txt` entries inside `/home` and its subdirectories.
+
+You can replace `/home` with any directory you want to search.
+
+## Searching by Type
+
+The `-type` option lets you restrict results to a particular kind of filesystem entry.
+
+### 4. Find Directories
+
+```bash
+find . -type d
+```
+
+Displays directories under the current location, including nested directories.
+
+### 5. Find Regular Files
+
+```bash
+find . -type f
+```
+
+Displays regular files under the current location and its subdirectories.
+
+This excludes directories and other types of filesystem entries, such as symbolic links.
+
+---
+
+## Finding Empty Files and Directories
+
+### 1. Find Empty Directories
+
+```bash
+find . -type d -empty
+```
+
+Displays directories that contain no files or subdirectories.
+
+### 2. Find Empty Files
+
+```bash
+find . -type f -empty
+```
+
+Displays regular files with a size of zero bytes.
+
+This can help identify unused placeholder files or files that were created but never populated.
+
+---
+
+## Combining `find` with Pipes
+
+You can combine `find` with other commands when you need to process its results further.
+
+For example:
+
+```bash
+find . -name "*.log" | grep "error"
+```
+
+How it works:
+
+1. `find` locates entries whose names end in `.log`.
+2. The pipe (`|`) passes the resulting paths to `grep`.
+3. `grep` displays paths containing the text `error`.
+
+**Important:** This searches the *file paths*, not the contents of the log files. To search inside log files for lines containing `error`, use:
+
+```bash
+find . -type f -name "*.log" -exec grep -n "error" {} +
+```
+
+Here, `find` locates regular `.log` files, and `grep` searches their contents while displaying matching line numbers.
+
+---
+
+## Quick Reference
+
+| Command | Purpose |
+|---|---|
+| `find . -name "file.txt"` | Find entries with a specific name |
+| `find . -iname "file.txt"` | Find entries by name, ignoring case |
+| `find . -name "*.txt"` | Find entries ending in `.txt` |
+| `find /home -name "*.txt"` | Search for `.txt` entries under `/home` |
+| `find . -type d` | Find directories |
+| `find . -type f` | Find regular files |
+| `find . -type d -empty` | Find empty directories |
+| `find . -type f -empty` | Find empty regular files |
+
+---
+
+## Summary
+
+- `find` searches the filesystem starting from a specified path.
+- It searches subdirectories recursively by default.
+- Use `-name` or `-iname` to search by name, and `-type` to filter by entry type.
+- Use `-empty` to locate empty files or directories.
+- Combine `find` with commands such as `grep` when additional filtering or processing is needed.
+
+**Remember:** Use `find` when you need to locate files or directories by their names, types, or other conditions.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>

@@ -1,0 +1,178 @@
+---
+title: Linux File Ownership
+---
+
+## What Is File Ownership?
+
+In Linux, every file and directory has an associated **owner (user)** and **group**. These determine which user and group permissions apply when accessing the resource.
+
+When a user creates a file, the user typically becomes its owner, and the file is assigned a group according to the system's rules.
+
+The `chown` command, short for **change owner**, allows authorized users to change the owner, the group, or both.
+
+### Basic Syntax
+
+```bash
+sudo chown [owner][:group] filename
+```
+
+- `owner`: The user who should own the file.
+- `group`: The group associated with the file.
+- `:` separates the owner and group names.
+- `sudo`: Commonly used when administrative privileges are needed.
+
+
+---
+
+
+## Changing the Owner
+
+To change the owner of a file, specify the new username:
+
+```bash
+sudo chown dev1 ai.txt
+```
+
+This changes the owner of `ai.txt` to `dev1`. The existing group remains unchanged.
+
+### Verify the Change
+
+```bash
+ls -l ai.txt
+```
+
+Example output:
+
+```text
+-rw-rw-r-- 1 dev1 ubuntu 120 Oct 11 10:30 ai.txt
+```
+
+Here, `dev1` is the owner, while `ubuntu` remains the group.
+
+
+---
+
+
+## Changing the Group
+
+To change only the group, place a colon before the group name:
+
+```bash
+sudo chown :devteam ai.txt
+```
+
+This changes the group of `ai.txt` to `devteam` while keeping the current owner unchanged.
+
+Verify the result:
+
+```bash
+ls -l ai.txt
+```
+
+Example output:
+
+```text
+-rw-rw-r-- 1 dev1 devteam 120 Oct 11 10:30 ai.txt
+```
+
+The owner is still `dev1`, and the group is now `devteam`.
+
+**Alternative:** The `chgrp` command can also be used to change a file's group.
+
+```bash
+sudo chgrp devteam ai.txt
+```
+
+
+---
+
+
+## Changing Both Owner and Group
+
+You can update both ownership attributes in a single command:
+
+```bash
+sudo chown dev1:devteam alien.tf
+```
+
+This sets the owner to `dev1` and the group to `devteam`.
+
+Verify the result:
+
+```bash
+ls -l alien.tf
+```
+
+Example output:
+
+```text
+-rw-rw-r-- 1 dev1 devteam 120 Oct 11 10:30 alien.tf
+```
+
+This is useful when transferring a file or project directory to another user or team.
+
+
+---
+
+
+## Changing Ownership Recursively
+
+Sometimes you need to change ownership for an entire directory, including its files and subdirectories. Use the `-R` option to apply the change recursively.
+
+```bash
+sudo chown -R dev1:devteam devops/
+```
+
+This changes the owner and group of:
+
+- The `devops/` directory itself.
+- Files directly inside it.
+- Subdirectories and their contents.
+
+To inspect the ownership of the directory and its immediate contents, run:
+
+```bash
+ls -l devops/
+```
+
+To inspect the directory itself and all nested contents, use:
+
+```bash
+ls -lR devops/
+```
+
+**Caution:** Recursive ownership changes can affect many files. Double-check the target path before running `chown -R`, especially on shared servers or system directories.
+
+
+---
+
+
+## Quick Reference
+
+| Command | Purpose |
+|---|---|
+| `sudo chown dev1 file.txt` | Change the owner |
+| `sudo chown :devteam file.txt` | Change the group only |
+| `sudo chown dev1:devteam file.txt` | Change both owner and group |
+| `sudo chown -R dev1:devteam directory/` | Change ownership recursively |
+| `sudo chgrp devteam file.txt` | Change the group |
+| `ls -l file.txt` | View file ownership and permissions |
+| `ls -lR directory/` | Inspect ownership and permissions recursively |
+
+
+---
+
+
+## Summary
+
+- Every file and directory has an owner and an associated group.
+- Use `chown username file` to change the owner.
+- Use `chown :group file` to change only the group.
+- Use `chown username:group file` to change both.
+- Use `chown -R` to apply ownership changes to a directory and its contents.
+- Use `ls -l` to verify ownership after making changes.
+- Changing ownership generally requires administrative privileges or specific permissions granted by the system.
+
+**Remember:** File permissions determine what users can do, while ownership determines whose user and group permissions are applied.
+
+Written By: <a href="https://www.linkedin.com/in/muskangarg03/" className="text-blue-600 dark:text-blue-400 hover:opacity-80 no-underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer"> Muskan Garg <ExternalLink className="w-4 h-4" /></a>
