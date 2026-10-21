@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { useGSAP } from '@gsap/react';
+import { X } from 'lucide-react';
 import { gsap } from '@/lib/gsap';
 import { DESKTOP_MEDIA_QUERY } from '@/lib/breakpoints';
 import { TeluskoLearnCta } from './TeluskoLearnCta';
@@ -26,21 +27,22 @@ export function MobileNavPanel({ open, navTopics, onClose }: MobileNavPanelProps
       const links = gsap.utils.toArray<HTMLElement>(panelRef.current.querySelectorAll('.home-mobile-link'));
 
       if (open) {
-        gsap.set([panelRef.current, backdropRef.current], { display: 'block' });
+        gsap.set(panelRef.current, { display: 'flex' });
+        gsap.set(backdropRef.current, { display: 'block' });
         gsap.fromTo(
           panelRef.current,
-          { height: 0, autoAlpha: 0 },
-          { height: 'auto', autoAlpha: 1, duration: 0.4, ease: 'power3.out' },
+          { xPercent: 100, autoAlpha: 0 },
+          { xPercent: 0, autoAlpha: 1, duration: 0.4, ease: 'power3.out' },
         );
         gsap.fromTo(backdropRef.current, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.3 });
         gsap.fromTo(
           links,
-          { y: -8, autoAlpha: 0 },
-          { y: 0, autoAlpha: 1, duration: 0.3, stagger: 0.04, delay: 0.1, ease: 'power3.out' },
+          { x: 16, autoAlpha: 0 },
+          { x: 0, autoAlpha: 1, duration: 0.3, stagger: 0.04, delay: 0.1, ease: 'power3.out' },
         );
       } else {
         gsap.to(panelRef.current, {
-          height: 0,
+          xPercent: 100,
           autoAlpha: 0,
           duration: 0.3,
           ease: 'power2.inOut',
@@ -67,9 +69,12 @@ export function MobileNavPanel({ open, navTopics, onClose }: MobileNavPanelProps
       if (e.matches) onClose();
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', onKeyDown);
     desktopQuery.addEventListener('change', onViewportChange);
     return () => {
+      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKeyDown);
       desktopQuery.removeEventListener('change', onViewportChange);
     };
@@ -86,31 +91,50 @@ export function MobileNavPanel({ open, navTopics, onClose }: MobileNavPanelProps
       />
       <div
         ref={panelRef}
-        className="absolute inset-x-0 top-full z-40 overflow-hidden rounded-b-xl border-x border-b"
+        className="fixed inset-y-0 right-0 z-40 flex w-[82%] max-w-sm flex-col border-l shadow-2xl"
         style={{ display: 'none', borderColor: 'var(--home-border)', background: 'var(--home-bg)' }}
       >
-        <div className="flex flex-col gap-1 px-4 py-4">
+        <div className="flex shrink-0 items-center justify-end px-4 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border"
+            style={{ borderColor: 'var(--home-border)', color: 'var(--home-foreground)' }}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 flex-col overflow-y-auto px-4 pb-4">
+          <span
+            className="home-mobile-link px-3 pb-2 text-xs font-semibold uppercase tracking-wider"
+            style={{ color: 'var(--home-foreground-faint)' }}
+          >
+            Menu
+          </span>
           {navTopics.map((topic) => (
             <Link
               key={topic.slug}
               href={topic.href}
               onClick={onClose}
-              className="home-mobile-link rounded-lg px-3 py-2.5 text-base font-semibold"
-              style={{ color: 'var(--home-foreground)' }}
+              className="home-mobile-link border-b px-3 py-3 text-base font-semibold"
+              style={{ color: 'var(--home-foreground)', borderColor: 'var(--home-border)' }}
             >
               {topic.title}
             </Link>
           ))}
+        </div>
 
-          <div
-            className="home-mobile-link mt-2 flex items-center justify-between gap-3 border-t pt-3"
-            style={{ borderColor: 'var(--home-border)' }}
-          >
+        <div
+          className="shrink-0 border-t px-4 pt-4"
+          style={{ borderColor: 'var(--home-border)', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
+          <div className="home-mobile-link mb-3 flex items-center justify-between gap-3">
             <ThemeToggleBox />
             <GithubIconButton className="h-10 w-10 rounded-xl border" iconClassName="h-5 w-5" />
           </div>
-
-          <TeluskoLearnCta className="home-mobile-link mt-2 flex w-full justify-center" />
+          <TeluskoLearnCta className="home-mobile-link flex w-full justify-center" />
         </div>
       </div>
     </>
