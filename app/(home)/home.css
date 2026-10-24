@@ -57,6 +57,10 @@ html:has(.home-shell) {
   color: var(--home-pill-ink);
 }
 
+.home-shell .home-footer-pill-text {
+  color: var(--home-footer-pill-fill);
+}
+
 .home-shell .bento-pill {
   left: auto;
   top: auto;
@@ -149,4 +153,44 @@ html:has(.home-shell) {
 
 .home-shell .home-no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+.home-shell {
+  --home-footer-lime-bg: #b2cb59;
+  --home-footer-pill-ink: #141414;
+  --home-footer-pill-fill: #f7f7f5;
+}
+
+.home-shell .home-footer {
+  --home-footer-bg: #1a1a1a;
+  --home-footer-border: rgba(186, 186, 185, 0.2);
+  --home-footer-foreground: #fffffd;
+  --home-footer-foreground-muted: rgba(255, 255, 253, 0.9);
+  --home-footer-foreground-subtle: rgba(255, 255, 253, 0.8);
+  --home-footer-foreground-faint: rgba(255, 255, 253, 0.6);
+}
+
+.home-shell .home-footer-link-text {
+  color: var(--home-footer-foreground-muted);
+}
+
+.home-shell .home-footer-legal-text {
+  color: var(--home-footer-foreground-faint);
+}
+
+.home-shell .home-get-started-cta {
+  transition: background-color 0.2s ease;
+}
+
+.home-shell .home-get-started-cta > span {
+  color: var(--home-bg);
+  transition: color 0.2s ease;
+}
+
+.home-shell .home-get-started-cta:hover {
+  background: var(--home-bg) !important;
+}
+
+.home-shell .home-get-started-cta:hover > span {
+  color: var(--home-foreground-strong);
 }

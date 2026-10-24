@@ -3,31 +3,35 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useGSAP } from '@gsap/react';
 import { Search, Menu, X } from 'lucide-react';
+import type * as PageTree from 'fumadocs-core/page-tree';
 import { useSearchContext } from 'fumadocs-ui/contexts/search';
+import { useSidebar } from 'fumadocs-ui/contexts/sidebar';
 import { gsap } from '@/lib/gsap';
 import { useInView } from '@/lib/useInView';
+import { GetStartedCta } from './GetStartedCta';
 import { TeluskoLearnCta } from './TeluskoLearnCta';
 import { ThemeToggleBox } from './ThemeToggleBox';
 import { GithubIconButton } from './GithubIconButton';
-import { MobileNavPanel } from './MobileNavPanel';
+import { DocsMobileSidebar } from './DocsMobileSidebar';
 import type { TopicLink } from '@/lib/topics';
 
 interface SiteHeaderProps {
   navTopics: TopicLink[];
+  tree: PageTree.Root;
   promoSlot: ReactNode;
 }
 
-export function SiteHeader({ navTopics, promoSlot }: SiteHeaderProps) {
+export function SiteHeader({ navTopics, tree, promoSlot }: SiteHeaderProps) {
   const promoRowRef = useRef<HTMLDivElement>(null);
   const navRowRef = useRef<HTMLElement>(null);
   const navLinksRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
   const searchTriggerRef = useRef<HTMLDivElement>(null);
   const { setOpenSearch } = useSearchContext();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const { open: menuOpen, setOpen: setMenuOpen } = useSidebar();
 
   const heroInView = useInView('home-hero');
 
@@ -157,6 +161,7 @@ export function SiteHeader({ navTopics, promoSlot }: SiteHeaderProps) {
             <div className="hidden items-center gap-3 lg:flex">
               <ThemeToggleBox />
               <GithubIconButton className="rounded-xl border-2 px-3 py-2" iconClassName="h-5 w-5" />
+              <GetStartedCta />
             </div>
 
             <button
@@ -177,7 +182,7 @@ export function SiteHeader({ navTopics, promoSlot }: SiteHeaderProps) {
           </div>
         </div>
 
-        <MobileNavPanel open={menuOpen} navTopics={navTopics} onClose={() => setMenuOpen(false)} />
+        <DocsMobileSidebar tree={tree} />
       </nav>
     </>
   );
